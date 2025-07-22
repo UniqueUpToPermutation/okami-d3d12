@@ -1,0 +1,9 @@
+{
+"renderer": {
+	"buffer_count": 2,
+	"backbuffer_width": 1920,
+	"backbuffer_height": 1080,
+	"fullscreen": false,
+	"sync_interval": 1
+}  
+}
