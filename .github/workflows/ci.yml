@@ -1,0 +1,46 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup vcpkg
+      uses: microsoft/setup-msbuild@v1.3
+      
+    - name: Install vcpkg dependencies
+      run: |
+        vcpkg install --triplet x64-windows directx-headers directxtk12 glfw3 glog imgui[dx12-binding,glfw-binding] tinygltf treehh yaml-cpp glm gtest
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release
+    
+    - name: Build Engine
+      run: |
+        cmake --build build --config Release
+    
+    - name: Build Tests
+      run: |
+        cmake --build build --target EngineTests --config Release
+    
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure --verbose -C Release
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results
+        path: build/Testing/

@@ -11,6 +11,7 @@
 using namespace okami;
 
 Engine::Engine() {
+	google::InitGoogleLogging("okami");
 	AddModuleFromFactory<ConfigModuleFactory>();
 }
 
@@ -20,7 +21,6 @@ Engine::~Engine() {
 }
 
 Error Engine::Startup(int argc, char const* argv[]) {
-	google::InitGoogleLogging(argv[0]);
 	LOG(INFO) << "Starting Okami Engine";
 
 	m_signalHandlers.RegisterHandler<SignalExit>([this](const SignalExit&) {

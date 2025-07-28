@@ -19,6 +19,9 @@ endif()
 
 project ("Engine")
 
+# Enable testing
+enable_testing()
+
 # Find packages via vcpkg
 find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
@@ -26,18 +29,139 @@ find_package(directxtk12 CONFIG REQUIRED)
 find_package(glog CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(directx-headers CONFIG REQUIRED)
+find_package(GTest CONFIG REQUIRED)
 
 # Automatically add all .cpp and .hpp files in the project directory
 file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
 
+#==============================================================================
+# HLSL Shader Compilation System
+#==============================================================================
+
+# Find all HLSL shader files in multiple directories
+file(GLOB_RECURSE HLSL_FILES 
+    "${CMAKE_SOURCE_DIR}/shaders/*.hlsl"
+)
+
+# Helper function to compile HLSL shaders
+# Parameters:
+#   TARGET_NAME - The CMake target to associate the shader with
+#   HLSL_FILE   - Path to the .hlsl source file
+#   SHADER_TYPE - Type of shader (vs, ps, cs, gs, hs, ds)
+#   ENTRY_POINT - Name of the entry point function in the shader
+function(add_hlsl_shader TARGET_NAME HLSL_FILE SHADER_TYPE ENTRY_POINT)
+    get_filename_component(SHADER_NAME ${HLSL_FILE} NAME_WE)
+    get_filename_component(SHADER_DIR ${HLSL_FILE} DIRECTORY)
+    get_filename_component(SHADER_DIR_NAME ${SHADER_DIR} NAME)
+    
+    # Create a unique output name that includes the source directory
+    # Format: {source_dir}_{shader_name}_{shader_type}.cso
+    set(COMPILED_SHADER "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_${SHADER_TYPE}.cso")
+    
+    # Ensure output directory exists
+    get_filename_component(COMPILED_SHADER_DIR ${COMPILED_SHADER} DIRECTORY)
+    file(MAKE_DIRECTORY ${COMPILED_SHADER_DIR})
+    
+    # Find fxc.exe compiler (Windows only)
+    if(WIN32)
+        find_program(FXC_EXECUTABLE
+            NAMES fxc.exe
+            PATHS
+                # Try Windows SDK paths
+                "$ENV{WindowsSdkDir}bin/$ENV{WindowsSDKVersion}x64"
+                "$ENV{WindowsSdkDir}bin/$ENV{WindowsSDKVersion}x86"
+                "$ENV{WindowsSdkDir}bin/x64"
+                "$ENV{WindowsSdkDir}bin/x86"
+                "C:/Program Files (x86)/Windows Kits/10/bin/*/x64"
+                "C:/Program Files (x86)/Windows Kits/10/bin/*/x86"
+                "C:/Program Files (x86)/Windows Kits/8.1/bin/x64"
+                "C:/Program Files (x86)/Windows Kits/8.1/bin/x86"
+            DOC "DirectX Shader Compiler (fxc.exe)"
+        )
+        
+        if(NOT FXC_EXECUTABLE)
+            message(WARNING "fxc.exe not found. HLSL shaders will not be compiled.")
+            return()
+        endif()
+        
+        # Determine shader model (using 5.1 for D3D12 compatibility)
+        set(SHADER_MODEL "${SHADER_TYPE}_5_1")
+        
+        # Add custom command to compile the shader
+        add_custom_command(
+            OUTPUT ${COMPILED_SHADER}
+            COMMAND ${FXC_EXECUTABLE} 
+                /T ${SHADER_MODEL}          # Target shader model
+                /E ${ENTRY_POINT}           # Entry point function name
+                /Fo ${COMPILED_SHADER}      # Output file
+                ${HLSL_FILE}                # Input source file
+            DEPENDS ${HLSL_FILE}
+            COMMENT "Compiling HLSL shader: ${SHADER_DIR_NAME}/${SHADER_NAME} (${SHADER_TYPE})"
+            VERBATIM
+        )
+        
+        # Add to target sources so CMake tracks dependencies properly
+        target_sources(${TARGET_NAME} PRIVATE ${COMPILED_SHADER})
+        set_source_files_properties(${COMPILED_SHADER} PROPERTIES GENERATED TRUE)
+    endif()
+endfunction()
+
+# Define common entry points and their associated shader types  
+# Format: "EntryPointName:ShaderType"
+set(SHADER_ENTRY_POINTS
+    "VSMain:vs"    # Vertex Shader
+    "PSMain:ps"    # Pixel Shader
+    "CSMain:cs"    # Compute Shader
+    "GSMain:gs"    # Geometry Shader
+    "HSMain:hs"    # Hull Shader (Tessellation)
+    "DSMain:ds"    # Domain Shader (Tessellation)
+)
+
+#==============================================================================
+# Main Engine Executable
+#==============================================================================
+
 add_executable (Engine ${ENGINE_SOURCES} ${IMGUI_IMPL_SOURCES})
 
-# Link vcpkg libraries with correct target names
-# glfw (not glfw3::glfew), imgui::imgui, Microsoft::DirectXTK12
-# Also link Direct3D12 system library for native D3D12 API usage
-# See vcpkg CMake integration output for details
-# https://github.com/microsoft/vcpkg/blob/master/docs/users/integration.md
+# Process all HLSL files and compile shaders
+set(ALL_COMPILED_SHADERS "")
 
+foreach(HLSL_FILE ${HLSL_FILES})
+    get_filename_component(SHADER_NAME ${HLSL_FILE} NAME_WE)
+    get_filename_component(SHADER_DIR ${HLSL_FILE} DIRECTORY)
+    get_filename_component(SHADER_DIR_NAME ${SHADER_DIR} NAME)
+    
+    message(STATUS "Processing HLSL file: ${HLSL_FILE}")
+    
+    # Read shader content to automatically detect entry points
+    file(READ ${HLSL_FILE} SHADER_CONTENT)
+    
+    # Check for each type of entry point in the shader source
+    foreach(ENTRY_POINT_PAIR ${SHADER_ENTRY_POINTS})
+        string(REPLACE ":" ";" ENTRY_PARTS ${ENTRY_POINT_PAIR})
+        list(GET ENTRY_PARTS 0 ENTRY_POINT)
+        list(GET ENTRY_PARTS 1 SHADER_TYPE)
+        
+        # If the entry point function is found in the shader source
+        if("${SHADER_CONTENT}" MATCHES "${ENTRY_POINT}")
+            add_hlsl_shader(Engine ${HLSL_FILE} ${SHADER_TYPE} ${ENTRY_POINT})
+            set(COMPILED_SHADER_PATH "${CMAKE_BINARY_DIR}/shaders/${SHADER_DIR_NAME}_${SHADER_NAME}_${SHADER_TYPE}.cso")
+            list(APPEND ALL_COMPILED_SHADERS ${COMPILED_SHADER_PATH})
+            message(STATUS "  Found ${ENTRY_POINT} -> will compile as ${SHADER_TYPE}")
+        endif()
+    endforeach()
+endforeach()
+
+# Create a custom target that depends on all compiled shaders
+if(ALL_COMPILED_SHADERS)
+    list(LENGTH ALL_COMPILED_SHADERS SHADER_COUNT)
+    add_custom_target(CompileShaders ALL DEPENDS ${ALL_COMPILED_SHADERS})
+    add_dependencies(Engine CompileShaders)
+    message(STATUS "Created CompileShaders target with ${SHADER_COUNT} shaders")
+    message(STATUS "Compiled shaders will be available in: ${CMAKE_BINARY_DIR}/shaders/")
+endif()
+
+# Link libraries for main engine
 target_link_libraries(Engine PRIVATE
     glfw
     imgui::imgui
@@ -50,9 +174,64 @@ target_link_libraries(Engine PRIVATE
     d3dcompiler
 )
 
+#==============================================================================
+# Test Executable
+#==============================================================================
+
+# Create a library with engine sources (excluding main.cpp)
+file(GLOB ENGINE_LIB_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
+list(REMOVE_ITEM ENGINE_LIB_SOURCES "${CMAKE_SOURCE_DIR}/main.cpp")
+
+add_library(EngineLib STATIC ${ENGINE_LIB_SOURCES})
+
+# Link libraries for engine library
+target_link_libraries(EngineLib PUBLIC
+    glfw
+    imgui::imgui
+    Microsoft::DirectXTK12
+    Microsoft::DirectX-Headers
+    d3d12
+    dxgi
+    glog::glog
+    yaml-cpp::yaml-cpp
+    d3dcompiler
+)
+
+# Set include directories for the library
+target_include_directories(EngineLib PUBLIC ${CMAKE_SOURCE_DIR})
+
+# Find all test source files
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")
+
+# Create test executable
+add_executable(EngineTests ${TEST_SOURCES})
+
+# Link test executable with engine library and gtest
+target_link_libraries(EngineTests PRIVATE 
+    EngineLib
+    GTest::gtest
+    GTest::gtest_main
+)
+
+# Set C++ standard for both targets
 if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET Engine PROPERTY CXX_STANDARD 23)
+    set_property(TARGET Engine PROPERTY CXX_STANDARD 23)
+    set_property(TARGET EngineLib PROPERTY CXX_STANDARD 23)
+    set_property(TARGET EngineTests PROPERTY CXX_STANDARD 23)
 endif()
+
+# Register tests with CTest
+add_test(NAME EngineUnitTests COMMAND EngineTests)
+
+# Set test properties
+set_tests_properties(EngineUnitTests PROPERTIES
+    TIMEOUT 300  # 5 minutes timeout
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+#==============================================================================
+# Post-build Steps
+#==============================================================================
 
 # Collect all files in config/ directory
 file(GLOB CONFIG_FILES "${CMAKE_SOURCE_DIR}/config/*")
@@ -65,4 +244,68 @@ add_custom_command(
         $<TARGET_FILE_DIR:Engine>/config/
     COMMENT "Copying config files to output directory if newer"
 )
-# TODO: Add tests and install targets if needed.
+
+# Copy compiled shaders to the final executable's output directory
+if(ALL_COMPILED_SHADERS)
+    add_custom_command(
+        TARGET Engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:Engine>/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_BINARY_DIR}/shaders
+            $<TARGET_FILE_DIR:Engine>/shaders
+        COMMENT "Copying compiled shaders to output directory"
+        DEPENDS CompileShaders
+    )
+endif()
+
+# Copy config files for tests as well
+add_custom_command(
+    TARGET EngineTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:EngineTests>/config
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CONFIG_FILES}
+        $<TARGET_FILE_DIR:EngineTests>/config/
+    COMMENT "Copying config files to test output directory if newer"
+)
+
+#==============================================================================
+# Custom Targets for Testing
+#==============================================================================
+
+# Add custom target to run tests
+add_custom_target(run_tests
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --verbose
+    DEPENDS EngineTests
+    COMMENT "Running all tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+# Add custom target to run tests with specific filters
+add_custom_target(run_world_tests
+    COMMAND EngineTests --gtest_filter="WorldTest*"
+    DEPENDS EngineTests
+    COMMENT "Running World tests only"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_custom_target(run_engine_tests
+    COMMAND EngineTests --gtest_filter="EngineTest*"
+    DEPENDS EngineTests
+    COMMENT "Running Engine tests only"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+# Add custom target for performance tests
+add_custom_target(run_performance_tests
+    COMMAND EngineTests --gtest_filter="PerformanceTest*"
+    DEPENDS EngineTests
+    COMMENT "Running performance tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+message(STATUS "Test targets created:")
+message(STATUS "  - run_tests: Run all tests")
+message(STATUS "  - run_world_tests: Run World class tests only")
+message(STATUS "  - run_engine_tests: Run Engine class tests only") 
+message(STATUS "  - run_performance_tests: Run performance tests only")
+message(STATUS "Use 'cmake --build . --target <target_name>' to run specific test suites")

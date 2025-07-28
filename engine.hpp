@@ -14,8 +14,9 @@
 #define OKAMI_DEFER(x) auto OKAMI_DEFER_##__LINE__ = okami::ScopeGuard([&]() { x; })
 
 namespace okami {
-
 	using entity_t = int32_t;
+	constexpr entity_t kRoot = 0;
+	constexpr entity_t kNullEntity = -1;
 
 	class ScopeGuard {
 	public:
@@ -156,11 +157,30 @@ namespace okami {
 		}
 
 		template <typename T>
+		void Publish(T signal) const {
+			Publish(typeid(T), std::make_any<T>(std::move(signal)));
+		}
+
+		template <typename T>
 		void RegisterHandler(std::function<void(T)> handler) {
 			m_eventHandlers.emplace(std::type_index(typeid(T)), [handler](std::any sig) {
 				handler(std::any_cast<T>(sig));
 				});
 		}
+	};
+
+	template <typename T>
+	class ComponentAddSignal {
+		T m_component;
+	};
+
+	template <typename T>
+	class ComponentUpdateSignal {
+		T m_component;
+	};
+
+	template <typename T>
+	class ComponentRemoveSignal {
 	};
 
 	template <typename T>
@@ -263,6 +283,10 @@ namespace okami {
 		Error Startup(int argc, char const* argv[]);
 		void Run();
 		void Shutdown();
+
+		inline ISignalBus* GetSignalBus() {
+			return &m_signalHandlers;
+		}
 
 		Engine();
 		~Engine();

@@ -9,23 +9,32 @@
 //
 //*********************************************************
 
+cbuffer TransformBuffer : register(b0)
+{
+    float4x4 worldMatrix;
+    float4x4 viewMatrix;
+    float4x4 projectionMatrix;
+};
+
 struct PSInput
 {
-	float4 position : SV_POSITION;
-	float4 color : COLOR;
+    float4 position : SV_POSITION;
+    float4 color : COLOR;
 };
 
 PSInput VSMain(float4 position : POSITION, float4 color : COLOR)
 {
-	PSInput result;
+    PSInput result;
 
-	result.position = position;
-	result.color = color;
-
-	return result;
+    float4 worldPosition = mul(position, worldMatrix);
+    float4 viewPosition = mul(worldPosition, viewMatrix);
+    result.position = mul(viewPosition, projectionMatrix);
+    result.color = color;
+    
+    return result;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-	return input.color;
+    return input.color;
 }
