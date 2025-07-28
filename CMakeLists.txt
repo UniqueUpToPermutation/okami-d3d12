@@ -30,6 +30,7 @@ find_package(glog CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(directx-headers CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
+find_package(directxtex CONFIG REQUIRED)
 
 # Automatically add all .cpp and .hpp files in the project directory
 file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
@@ -172,6 +173,7 @@ target_link_libraries(Engine PRIVATE
     glog::glog
     yaml-cpp::yaml-cpp
     d3dcompiler
+    Microsoft::DirectXTex
 )
 
 #==============================================================================
@@ -195,6 +197,7 @@ target_link_libraries(EngineLib PUBLIC
     glog::glog
     yaml-cpp::yaml-cpp
     d3dcompiler
+    Microsoft::DirectXTex
 )
 
 # Set include directories for the library

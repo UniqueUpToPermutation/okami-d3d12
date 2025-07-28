@@ -10,8 +10,14 @@
 
 using namespace okami;
 
-Engine::Engine() {
-	google::InitGoogleLogging("okami");
+Engine::Engine(EngineParams params) : m_params(params) {
+	std::string name;
+	if (m_params.m_argc == 0) {
+		name = "okami";
+	} else {
+		name = m_params.m_argv[0];
+	}
+	google::InitGoogleLogging(name.c_str());
 	AddModuleFromFactory<ConfigModuleFactory>();
 }
 
@@ -20,7 +26,7 @@ Engine::~Engine() {
 	google::ShutdownGoogleLogging();
 }
 
-Error Engine::Startup(int argc, char const* argv[]) {
+Error Engine::Startup() {
 	LOG(INFO) << "Starting Okami Engine";
 
 	m_signalHandlers.RegisterHandler<SignalExit>([this](const SignalExit&) {
@@ -30,6 +36,10 @@ Error Engine::Startup(int argc, char const* argv[]) {
 	for (auto& module : m_modules) {
 		module->RegisterInterfaces(m_interfaces);
 		module->RegisterSignalHandlers(m_signalHandlers);
+	}
+
+	if (auto* renderer = m_interfaces.Query<IRenderer>(); renderer) {
+		renderer->SetHeadlessMode(m_params.m_headlessMode);
 	}
 
 	for (const auto& module : m_modules) {
@@ -60,10 +70,22 @@ void Engine::Run() {
 	std::vector<bool> moduleFinished(m_modules.size(), false);
 
 	auto* renderer = m_interfaces.Query<IRenderer>();
+	auto* config = m_interfaces.Query<IConfigModule>();
+
+	std::optional<size_t> maxFrames = m_params.m_frameCount;
+	bool headlessMode = m_params.m_headlessMode;
 
 	if (!renderer) {
 		LOG(WARNING) << "No renderer module found, running headless!";
+		headlessMode = true;
 	}
+
+	if (headlessMode && !maxFrames) {
+		maxFrames = 1; // Default to 1 frames in headless mode
+		LOG(INFO) << "Running in headless mode, defaulting to " << *maxFrames << " frames.";
+	}
+
+	size_t frameCount = 0;
 
 	while (!m_shouldExit.load()) {
 		auto now = std::chrono::high_resolution_clock::now();
@@ -89,7 +111,7 @@ void Engine::Run() {
 					idle &= result.m_idle;
 				}
 			} while (!idle);
-		};
+			};
 
 		updateFrame();
 
@@ -97,5 +119,19 @@ void Engine::Run() {
 		if (renderer) {
 			renderer->Render();
 		}
+
+		if (m_params.m_headlessMode) {
+			std::string outputFile = std::string(m_params.m_headlessOutputFileStem) + "_" + std::to_string(frameCount) + ".dds";
+			LOG(INFO) << "Saving headless frame to: " << outputFile;
+			renderer->SaveToFile(outputFile);
+		}
+	
+		frameCount++;
+		if (maxFrames && frameCount >= *maxFrames) {
+			m_shouldExit.store(true);
+		}
+
+		lastTick = now;
 	}
 }
+

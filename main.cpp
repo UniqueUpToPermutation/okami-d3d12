@@ -5,15 +5,18 @@
 using namespace okami;
 
 int main(int argc, char const* argv[]) {
-    Engine engine;
-    engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
-    OKAMI_DEFER(engine.Shutdown());
+	Engine engine{EngineParams{
+		.m_argc = argc,
+		.m_argv = argv,
+	}};
+	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+	OKAMI_DEFER(engine.Shutdown());
 
-    if (auto err = engine.Startup(argc, argv); err.IsError()) {
-        std::cerr << "Engine startup failed: " << err << std::endl;
-    }
+	if (auto err = engine.Startup(); err.IsError()) {
+		std::cerr << "Engine startup failed: " << err << std::endl;
+	}
 
-    engine.Run();
+	engine.Run();
 
-    return 0;
+	return 0;
 }

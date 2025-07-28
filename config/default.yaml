@@ -4,6 +4,7 @@
 	"backbuffer_width": 1920,
 	"backbuffer_height": 1080,
 	"fullscreen": false,
-	"sync_interval": 1
+	"sync_interval": 1,
+	"output_file": "output.png"
 }  
 }

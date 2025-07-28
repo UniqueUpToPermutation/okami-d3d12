@@ -254,12 +254,24 @@ namespace okami {
 		virtual ~IRenderer() = default;
 
 		virtual void Render() = 0;
+		virtual void SaveToFile(const std::string& filename) = 0;
+		virtual void SetHeadlessMode(bool headless) = 0;
 	};
 
 	struct SignalExit {};
 
+	struct EngineParams {
+		int m_argc = 0;
+		const char** m_argv = nullptr;
+		std::string_view m_configFilePath = "default.yaml";
+		bool m_headlessMode = false;
+		std::string_view m_headlessOutputFileStem = "output";
+		std::optional<size_t> m_frameCount = std::nullopt;
+	};
+
 	class Engine final {
 	private:
+		EngineParams m_params;
 		std::vector<std::unique_ptr<IEngineModule>> m_modules;
 		InterfaceCollection m_interfaces;
 		SignalHandlerCollection m_signalHandlers;
@@ -280,7 +292,7 @@ namespace okami {
 			return *this;
 		}
 
-		Error Startup(int argc, char const* argv[]);
+		Error Startup();
 		void Run();
 		void Shutdown();
 
@@ -288,7 +300,7 @@ namespace okami {
 			return &m_signalHandlers;
 		}
 
-		Engine();
+		Engine(EngineParams params = {});
 		~Engine();
 	};
 

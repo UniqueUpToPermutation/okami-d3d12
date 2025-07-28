@@ -1,1 +1,23 @@
-{"name":"engine","version-string":"0.1.0","dependencies":["directx-headers","directxtk12","glfw3","glog","gtest",{ "name": "imgui", "features": [ "dx12-binding", "glfw-binding" ] }, "tinygltf", "treehh", "yaml-cpp", "glm"]}
+{
+  "name": "engine",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "directx-headers",
+    "directxtk12",
+    "glfw3",
+    "glog",
+    "gtest",
+    {
+      "name": "imgui",
+      "features": [ "dx12-binding", "glfw-binding" ]
+    },
+    "tinygltf",
+    "treehh",
+    "yaml-cpp",
+    "glm",
+    {
+      "name": "directxtex",
+      "features": [ "dx12" ]
+    }
+  ]
+}
