@@ -1,10 +1,9 @@
 {
 "renderer": {
-	"buffer_count": 2,
-	"backbuffer_width": 1920,
-	"backbuffer_height": 1080,
+	"bufferCount": 2,
+	"backbufferWidth": 1920,
+	"backbufferHeight": 1080,
 	"fullscreen": false,
-	"sync_interval": 1,
-	"output_file": "output.png"
+	"syncInterval": 1
 }  
 }

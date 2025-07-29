@@ -30,19 +30,6 @@
 #include "d3d12_primitive_renderer.hpp"
 #include "d3d12_imgui.hpp"
 
-constexpr std::string_view kBufferCountKey = "renderer.buffer_count";
-constexpr std::string_view kBackbufferWidthKey = "renderer.backbuffer_width";
-constexpr std::string_view kBackbufferHeightKey = "renderer.backbuffer_height";
-constexpr std::string_view kSyncIntervalKey = "renderer.sync_interval";
-constexpr std::string_view kHeadlessKey = "renderer.headless";
-constexpr std::string_view kOutputFileKey = "renderer.output_file";
-
-constexpr int kDefaultBufferCount = 2; // Double buffering
-constexpr const char* kDefaultWindowTitle = "Okami Renderer";
-constexpr int kDefaultBackbufferWidth = 1280;
-constexpr int kDefaultBackbufferHeight = 720;
-constexpr int kDefaultSyncInterval = 1; // VSync enabled
-
 // Depth buffer format
 constexpr DXGI_FORMAT kBackbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 constexpr DXGI_FORMAT kDepthBufferFormat = DXGI_FORMAT_D32_FLOAT;
@@ -52,6 +39,22 @@ using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
 using namespace okami;
+
+struct RendererConfig {
+	int bufferCount = 2;
+	std::string windowTitle = "Okami Renderer";
+	int backbufferWidth = 1280;
+	int backbufferHeight = 720;
+	int syncInterval = 1; // VSync enabled
+
+	OKAMI_CONFIG(renderer) {
+		OKAMI_CONFIG_FIELD(bufferCount);
+		OKAMI_CONFIG_FIELD(windowTitle);
+		OKAMI_CONFIG_FIELD(backbufferWidth);
+		OKAMI_CONFIG_FIELD(backbufferHeight);
+		OKAMI_CONFIG_FIELD(syncInterval);
+	}
+};
 
 struct FrameContext
 {
@@ -188,7 +191,7 @@ private:
 
 	HANDLE m_eventHandle = NULL;
 	UINT64 m_currentFrame = 0;
-	UINT m_syncInterval = kDefaultSyncInterval;
+	RendererConfig m_config;
 
 	std::optional<DirectX::GraphicsMemory> m_graphicsMemory;
 
@@ -204,8 +207,6 @@ private:
 
 	// Headless mode support
 	bool m_headlessMode = false;
-	int m_renderWidth = kDefaultBackbufferWidth;
-	int m_renderHeight = kDefaultBackbufferHeight;
 	ComPtr<ID3D12Resource> m_readbackBuffer;
 
 public:
@@ -230,24 +231,22 @@ public:
 
 	void RegisterInterfaces(InterfaceCollection& queryable) override {
 		queryable.Register<IRenderer>(this);
+
+		RegisterConfig<RendererConfig>(queryable, LOG(WARNING));
 	}
 
 	void RegisterSignalHandlers(ISignalBus& eventBus) override {
 	}
 
 	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+		// Get configuration
+		m_config = ReadConfig<RendererConfig>(queryable, LOG(WARNING));
+		
 		// Store the event handle in the member variable
 		m_eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (!m_eventHandle) {
 			return Error("Failed to create event handle for synchronization");
 		}
-
-		IConfigModule* config = queryable.Query<IConfigModule>();
-
-		// Check for headless mode
-		m_renderWidth = config->GetInt(kBackbufferWidthKey).value_or(kDefaultBackbufferWidth);
-		m_renderHeight = config->GetInt(kBackbufferHeightKey).value_or(kDefaultBackbufferHeight);
-		m_syncInterval = config->GetInt(kSyncIntervalKey).value_or(kDefaultSyncInterval);
 
 		// Initialize GLFW only if not in headless mode
 		if (!m_headlessMode) {
@@ -259,7 +258,10 @@ public:
 			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 			GLFWwindow* window = glfwCreateWindow(
-				m_renderWidth, m_renderHeight, kDefaultWindowTitle, nullptr, nullptr);
+				m_config.backbufferWidth,
+				m_config.backbufferHeight,
+				m_config.windowTitle.c_str(),
+				nullptr, nullptr);
 			if (!window) {
 				return Error("Failed to create GLFW window");
 			}
@@ -302,8 +304,6 @@ public:
 		}
 		m_commandQueue = ComPtr<ID3D12CommandQueue>(commandQueueRaw);
 
-		int bufferCount = config->GetInt(kBufferCountKey).value_or(kDefaultBufferCount);
-
 		if (!m_headlessMode) {
 			// Create swap chain for windowed mode
 			ComPtr<IDXGIFactory7> dxgiFactory;
@@ -321,7 +321,7 @@ public:
 			glfwGetFramebufferSize(m_window, &width, &height);
 
 			DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-			swapChainDesc.BufferCount = bufferCount;
+			swapChainDesc.BufferCount = m_config.bufferCount;
 			swapChainDesc.Width = width;
 			swapChainDesc.Height = height;
 			swapChainDesc.Format = kBackbufferFormat;
@@ -358,7 +358,7 @@ public:
 				m_d3d12Device.Get(),
 				D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
 				D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
-				bufferCount
+				m_config.bufferCount
 			);
 		}
 		catch (std::exception ex) {
@@ -381,8 +381,8 @@ public:
 		// Create depth buffer
 		CD3DX12_RESOURCE_DESC depthStencilDesc = CD3DX12_RESOURCE_DESC::Tex2D(
 			kDepthBufferFormat,
-			m_renderWidth,
-			m_renderHeight,
+			m_config.backbufferWidth,
+			m_config.backbufferHeight,
 			1, // Array size
 			1, // Mip levels
 			1, // Sample count
@@ -415,14 +415,14 @@ public:
 		m_d3d12Device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc, dsvHandle);
 
 		// Create per-frame data
-		for (int i = 0; i < bufferCount; ++i) {
+		for (int i = 0; i < m_config.bufferCount; ++i) {
 			std::expected<PerFrameData, Error> result;
 			if (m_headlessMode) {
 				result = PerFrameData::CreateOffscreen(
 					m_d3d12Device.Get(),
 					i,
-					m_renderWidth,
-					m_renderHeight,
+					m_config.backbufferWidth,
+					m_config.backbufferHeight,
 					*m_rtvHeap
 				);
 			}
@@ -445,7 +445,7 @@ public:
 
 		// Create readback buffer for headless mode
 		if (m_headlessMode) {
-			const UINT64 readbackBufferSize = m_renderWidth * m_renderHeight * 4; // 4 bytes per pixel (RGBA)
+			const UINT64 readbackBufferSize = m_config.backbufferWidth * m_config.backbufferHeight * 4; // 4 bytes per pixel (RGBA)
 
 			CD3DX12_RESOURCE_DESC readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(readbackBufferSize);
 			CD3DX12_HEAP_PROPERTIES readbackHeapProps(D3D12_HEAP_TYPE_READBACK);
@@ -594,16 +594,16 @@ public:
 		D3D12_VIEWPORT viewport = {};
 		viewport.TopLeftX = 0.0f;
 		viewport.TopLeftY = 0.0f;
-		viewport.Width = static_cast<float>(m_renderWidth);
-		viewport.Height = static_cast<float>(m_renderHeight);
+		viewport.Width = static_cast<float>(m_config.backbufferWidth);
+		viewport.Height = static_cast<float>(m_config.backbufferHeight);
 		viewport.MinDepth = 0.0f;
 		viewport.MaxDepth = 1.0f;
 
 		D3D12_RECT scissorRect = {};
 		scissorRect.left = 0;
 		scissorRect.top = 0;
-		scissorRect.right = m_renderWidth;
-		scissorRect.bottom = m_renderHeight;
+		scissorRect.right = m_config.backbufferWidth;
+		scissorRect.bottom = m_config.backbufferHeight;
 
 		frameData.m_commandList->RSSetViewports(1, &viewport);
 		frameData.m_commandList->RSSetScissorRects(1, &scissorRect);
@@ -697,7 +697,7 @@ public:
 		// Present or save to file
 		if (!m_headlessMode) {
 			// Present
-			m_swapChain->Present(m_syncInterval, 0);
+			m_swapChain->Present(m_config.syncInterval, 0);
 		}
 	}
 
@@ -775,8 +775,8 @@ public:
 
 		// Create DirectXTex image from mapped data
 		DirectX::Image image;
-		image.width = m_renderWidth;
-		image.height = m_renderHeight;
+		image.width = m_config.backbufferWidth;
+		image.height = m_config.backbufferHeight;
 		image.format = kBackbufferFormat;
 		image.rowPitch = footprint.Footprint.RowPitch;
 		image.slicePitch = totalBytes;
