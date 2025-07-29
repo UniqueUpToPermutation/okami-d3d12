@@ -10,7 +10,6 @@ int main(int argc, char const* argv[]) {
 		.m_argv = argv,
 	}};
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
-	OKAMI_DEFER(engine.Shutdown());
 
 	if (auto err = engine.Startup(); err.IsError()) {
 		std::cerr << "Engine startup failed: " << err << std::endl;

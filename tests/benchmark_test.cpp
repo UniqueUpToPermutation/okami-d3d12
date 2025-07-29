@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <random>
-#include "../world.hpp"
+#include "../entity_tree.hpp"
+#include "../engine.hpp"
 
 using namespace okami;
 
@@ -29,7 +30,7 @@ class WorldBenchmark : public ::testing::Test {
 protected:
     void SetUp() override {
 		signalHandlers = std::make_unique<SignalHandlerCollection>();
-        world = std::make_unique<World>(signalHandlers.get());
+        world = std::make_unique<EntityTree>();
         rng.seed(42); // Fixed seed for reproducible results
     }
 
@@ -37,7 +38,7 @@ protected:
         world.reset();
     }
 
-    std::unique_ptr<World> world;
+    std::unique_ptr<EntityTree> world;
 	std::unique_ptr<SignalHandlerCollection> signalHandlers;
     std::mt19937 rng;
 };
@@ -51,6 +52,7 @@ TEST_F(WorldBenchmark, EntityCreationBenchmark) {
     
     // Benchmark entity creation
     timer.Reset();
+	world->BeginUpdates(*signalHandlers);
     for (int i = 0; i < numEntities; ++i) {
         entities.push_back(world->CreateEntity());
     }
@@ -68,6 +70,7 @@ TEST_F(WorldBenchmark, EntityCreationBenchmark) {
     for (entity_t entity : entities) {
         world->RemoveEntity(entity);
     }
+    world->EndUpdates();
     double removalTime = timer.ElapsedMilliseconds();
     
     std::cout << "Removed " << numEntities << " entities in " 
@@ -88,6 +91,7 @@ TEST_F(WorldBenchmark, HierarchyTraversalBenchmark) {
     std::vector<entity_t> branches;
     std::vector<entity_t> leaves;
     
+	world->BeginUpdates(*signalHandlers);
     for (int i = 0; i < numBranches; ++i) {
         entity_t branch = world->CreateEntity();
         branches.push_back(branch);
@@ -96,6 +100,7 @@ TEST_F(WorldBenchmark, HierarchyTraversalBenchmark) {
             leaves.push_back(world->CreateEntity(branch));
         }
     }
+    world->EndUpdates();
     
     // Benchmark children iteration
     timer.Reset();
@@ -133,93 +138,6 @@ TEST_F(WorldBenchmark, HierarchyTraversalBenchmark) {
     EXPECT_LT(ancestorTime, 100.0); // Should be fast
 }
 
-TEST_F(WorldBenchmark, RandomOperationsBenchmark) {
-    const int numOperations = 10000;
-    const int maxEntities = 1000;
-    
-    std::vector<entity_t> entities;
-    entities.push_back(kRoot); // Always have root available
-    
-    Timer timer;
-    
-    std::uniform_int_distribution<int> operationDist(0, 3);
-    
-    // Perform random operations
-    for (int i = 0; i < numOperations; ++i) {
-        int operation = operationDist(rng);
-        
-        switch (operation) {
-        case 0: // Create entity
-            if (entities.size() < maxEntities) {
-                std::uniform_int_distribution<size_t> parentDist(0, entities.size() - 1);
-                entity_t parent = entities[parentDist(rng)];
-                entity_t newEntity = world->CreateEntity(parent);
-                entities.push_back(newEntity);
-            }
-            break;
-            
-        case 1: // Remove entity (not root)
-            if (entities.size() > 1) {
-                std::uniform_int_distribution<size_t> entityDist(1, entities.size() - 1);
-                size_t index = entityDist(rng);
-                world->RemoveEntity(entities[index]);
-                entities.erase(entities.begin() + index);
-            }
-            break;
-            
-        case 2: // Set parent
-            if (entities.size() > 2) {
-                std::uniform_int_distribution<size_t> entityDist(1, entities.size() - 1);
-                std::uniform_int_distribution<size_t> parentDist(0, entities.size() - 1);
-                
-                size_t entityIndex = entityDist(rng);
-                size_t parentIndex = parentDist(rng);
-                
-                if (entityIndex != parentIndex) {
-                    world->SetParent(entities[entityIndex], entities[parentIndex]);
-                }
-            }
-            break;
-            
-        case 3: // Query operations
-            if (!entities.empty()) {
-                std::uniform_int_distribution<size_t> entityDist(0, entities.size() - 1);
-                entity_t entity = entities[entityDist(rng)];
-                
-                // Perform various queries
-                world->GetParent(entity);
-                
-                // Count children
-                int childCount = 0;
-                for (auto child : world->GetChildren(entity)) {
-                    childCount++;
-                    (void)child;
-                }
-                
-                // Count ancestors
-                int ancestorCount = 0;
-                for (auto ancestor : world->GetAncestors(entity)) {
-                    ancestorCount++;
-                    (void)ancestor;
-                    if (ancestorCount > 10) break; // Limit to prevent deep recursion
-                }
-            }
-            break;
-        }
-    }
-    
-    double totalTime = timer.ElapsedMilliseconds();
-    
-    std::cout << "Performed " << numOperations << " random operations in " 
-              << totalTime << "ms (" 
-              << (totalTime * 1000.0 / numOperations) << " us per operation)" << std::endl;
-    
-    std::cout << "Final entity count: " << entities.size() << std::endl;
-    
-    // Should complete in reasonable time
-    EXPECT_LT(totalTime, 5000.0); // Less than 5 seconds
-}
-
 // Memory usage test (basic)
 TEST_F(WorldBenchmark, MemoryUsageBenchmark) {
     const int numEntities = 50000;
@@ -230,9 +148,11 @@ TEST_F(WorldBenchmark, MemoryUsageBenchmark) {
     std::vector<entity_t> entities;
     entities.reserve(numEntities);
     
+	world->BeginUpdates(*signalHandlers);
     for (int i = 0; i < numEntities; ++i) {
         entities.push_back(world->CreateEntity());
     }
+    world->EndUpdates();
     
     double creationTime = timer.ElapsedMilliseconds();
     

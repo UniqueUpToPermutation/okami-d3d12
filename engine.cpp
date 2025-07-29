@@ -18,7 +18,14 @@ Engine::Engine(EngineParams params) : m_params(params) {
 		name = m_params.m_argv[0];
 	}
 	google::InitGoogleLogging(name.c_str());
+
+#ifdef _DEBUG
+	google::SetStderrLogging(google::LogSeverity::GLOG_INFO); // Enable INFO and WARNING printouts in debug mode
+	google::LogToStderr(); // Ensure logs are printed to stderr
+#endif
+
 	AddModuleFromFactory<ConfigModuleFactory>();
+	AddModuleFromFactory<PhysicsModuleFactory>();
 }
 
 Engine::~Engine() {
@@ -63,7 +70,9 @@ void Engine::Shutdown() {
 	m_modules.clear();
 }
 
-void Engine::Run() {
+void Engine::Run(std::optional<size_t> runFrameCount) {
+	m_shouldExit.store(false);
+
 	auto beginTick = std::chrono::high_resolution_clock::now();
 	auto lastTick = beginTick;
 
@@ -72,7 +81,7 @@ void Engine::Run() {
 	auto* renderer = m_interfaces.Query<IRenderer>();
 	auto* config = m_interfaces.Query<IConfigModule>();
 
-	std::optional<size_t> maxFrames = m_params.m_frameCount;
+	std::optional<size_t> maxFrames = runFrameCount;
 	bool headlessMode = m_params.m_headlessMode;
 
 	if (!renderer) {
@@ -94,14 +103,17 @@ void Engine::Run() {
 
 		Time time{
 			.m_deltaTime = deltaTime.count(),
-			.m_totalTime = totalTime.count()
+			.m_totalTime = totalTime.count(),
+			.m_frame = frameCount
 		};
 
 		// Update frame
 		auto updateFrame = [&]() {
+			m_entityTree.BeginUpdates(m_signalHandlers);
 			for (auto& module : m_modules) {
-				module->OnFrameBegin(time, m_signalHandlers);
+				module->OnFrameBegin(time, m_signalHandlers, m_entityTree);
 			}
+			m_entityTree.EndUpdates();
 
 			bool idle;
 			do {
@@ -114,7 +126,7 @@ void Engine::Run() {
 			};
 
 		updateFrame();
-
+		
 		// Render frame
 		if (renderer) {
 			renderer->Render();

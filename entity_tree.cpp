@@ -1,11 +1,14 @@
-#include "world.hpp"
+#include "entity_tree.hpp"
 #include <unordered_map>
 #include <iostream>
+#include <cassert>
+
+#include "engine.hpp"
 
 using namespace okami;
 
 // Define WorldNode and WorldImpl in the .cpp file to keep them private
-struct WorldNode {
+struct EntityTreeNode {
 	entity_t m_entityId = kNullEntity;
 	entity_t m_parent = kNullEntity;
 	entity_t m_firstChild = kNullEntity;
@@ -13,71 +16,77 @@ struct WorldNode {
 	entity_t m_nextSibling = kNullEntity;
 	entity_t m_previousSibling = kNullEntity;
 
-	WorldNode(entity_t id) : m_entityId(id) {}
-	WorldNode() = default; // Default constructor for empty nodes
+	EntityTreeNode(entity_t id) : m_entityId(id) {}
+	EntityTreeNode() = default; // Default constructor for empty nodes
 };
 
 namespace okami {
-	struct WorldImpl {
+	struct EntityTreeImpl {
 		entity_t m_nextEntityId = 1;
-		std::unordered_map<entity_t, WorldNode> m_entities;
+		std::unordered_map<entity_t, EntityTreeNode> m_entities;
 
-		WorldImpl() {
-			m_entities.emplace(kRoot, WorldNode(kRoot));
+		EntityTreeImpl() {
+			m_entities.emplace(kRoot, EntityTreeNode(kRoot));
 			m_entities[kRoot].m_parent = kNullEntity;
 		}
 
 		entity_t GetNextSibling(entity_t entity) const {
 			auto it = m_entities.find(entity);
-			return (it != m_entities.end()) ? it->second.m_nextSibling : kNullEntity;
+			if (it == m_entities.end()) {
+				throw std::runtime_error("Entity does not exist");
+			}
+			return it->second.m_nextSibling;
 		}
 
 		entity_t GetFirstChild(entity_t entity) const {
 			auto it = m_entities.find(entity);
-			return (it != m_entities.end()) ? it->second.m_firstChild : kNullEntity;
+			if (it == m_entities.end()) {
+				throw std::runtime_error("Entity does not exist");
+			}
+			return it->second.m_firstChild;
 		}
 
 		entity_t GetParent(entity_t entity) const {
 			auto it = m_entities.find(entity);
-			return (it != m_entities.end()) ? it->second.m_parent : kNullEntity;
+			if (it == m_entities.end()) {
+				throw std::runtime_error("Entity does not exist");
+			}
+			return  it->second.m_parent ;
 		}
 	};
+
+	void EntityTreeImplDeleter::operator()(EntityTreeImpl* impl) const {
+		delete impl;
+	}
 }
 
-// Constructor
-World::World(ISignalBus* bus) :
-	m_impl(std::make_unique<WorldImpl>()),
-	m_signalBus(bus) {
+EntityTree::EntityTree() : m_impl(std::unique_ptr<EntityTreeImpl, EntityTreeImplDeleter>(new EntityTreeImpl())) {
+	// Initialize the root entity
+	m_impl->m_entities.emplace(kRoot, EntityTreeNode(kRoot));
+	m_impl->m_entities[kRoot].m_parent = kNullEntity;
 }
 
-World::World(Engine * engine) :
-	World(engine->GetSignalBus()) {
-}
-
-// Destructor - must be defined after WorldImpl is complete
-World::~World() = default;
-
-// Move operations - must be defined after WorldImpl is complete
-World::World(World&&) noexcept = default;
-World& World::operator=(World&&) noexcept = default;
-
-entity_t World::CreateEntity(entity_t parent) {
+entity_t EntityTree::CreateEntity(entity_t parent) {
 	entity_t newId = m_impl->m_nextEntityId++;
 	AddEntity(newId, parent);
+
+	assert(m_signalBus != nullptr && "BeginUpdates must be called before CreateEntity");
+	m_signalBus->Publish(EntityCreateSignal{ .m_entity = newId, .m_parent = parent });
+
 	return newId;
 }
 
-void World::AddEntity(entity_t entity, entity_t parent) {
+void EntityTree::AddEntity(entity_t entity, entity_t parent) {
 	if (m_impl->m_entities.count(entity)) {
-		return; // Already exists
+		throw std::runtime_error("Entity already exists");
 	}
 
 	auto parentIt = m_impl->m_entities.find(parent);
 	if (parentIt == m_impl->m_entities.end()) {
-		return; // Parent doesn't exist
+		throw std::runtime_error("Parent entity does not exist");
 	}
 
-	WorldNode newNode(entity);
+	EntityTreeNode newNode(entity);
 	newNode.m_parent = parent;
 
 	auto& parentNode = parentIt->second;
@@ -101,11 +110,15 @@ void World::AddEntity(entity_t entity, entity_t parent) {
 	}
 }
 
-void World::RemoveEntity(entity_t entity) {
-	if (entity == kRoot) return;
+void EntityTree::RemoveEntity(entity_t entity) {
+	if (entity == kRoot) {
+		throw std::runtime_error("Cannot remove root entity");
+	}
 
 	auto entityIt = m_impl->m_entities.find(entity);
-	if (entityIt == m_impl->m_entities.end()) return;
+	if (entityIt == m_impl->m_entities.end()) {
+		throw std::runtime_error("Entity does not exist");
+	}
 
 	const auto& node = entityIt->second;
 
@@ -152,17 +165,30 @@ void World::RemoveEntity(entity_t entity) {
 	}
 
 	m_impl->m_entities.erase(entityIt);
+
+	assert(m_signalBus != nullptr && "BeginUpdates must be called before RemoveEntity");
+	m_signalBus->Publish(EntityRemoveSignal{ .m_entity = entity });
 }
 
-void World::SetParent(entity_t entity, entity_t newParent) {
-	if (entity == kRoot) return;
+void EntityTree::BeginUpdates(ISignalBus const& signalBus) {
+	m_signalBus = &signalBus;
+}
+
+void EntityTree::EndUpdates() {
+	m_signalBus = nullptr;
+}
+
+void EntityTree::SetParent(entity_t entity, entity_t newParent) {
+	if (entity == kRoot) {
+		throw std::runtime_error("Cannot set parent for root entity");
+	}
 
 	auto entityIt = m_impl->m_entities.find(entity);
 	auto parentIt = m_impl->m_entities.find(newParent);
 
 	if (entityIt == m_impl->m_entities.end() ||
 		parentIt == m_impl->m_entities.end()) {
-		return;
+		throw std::runtime_error("Entity or new parent does not exist");
 	}
 
 	// Check for circular dependency
@@ -231,22 +257,25 @@ void World::SetParent(entity_t entity, entity_t newParent) {
 		}
 		newParentNode.m_lastChild = entity;
 	}
+
+	assert(m_signalBus != nullptr && "BeginUpdates must be called before SetParent");
+	m_signalBus->Publish(EntityParentChangeSignal{.m_entity = entity, .m_oldParent = oldParent, .m_newParent = newParent});
 }
 
-entity_t World::GetParent(entity_t entity) const {
+entity_t EntityTree::GetParent(entity_t entity) const {
 	return m_impl->GetParent(entity);
 }
 
-entity_t World::GetNextSibling(entity_t entity) const {
+entity_t EntityTree::GetNextSibling(entity_t entity) const {
 	return m_impl->GetNextSibling(entity);
 }
 
-entity_t World::GetFirstChild(entity_t entity) const {
+entity_t EntityTree::GetFirstChild(entity_t entity) const {
 	return m_impl->GetFirstChild(entity);
 }
 
 // Iterator range implementations
-EntityIteratorRange<EntityChildrenIterator> World::GetChildren(entity_t entity) const {
+EntityIteratorRange<EntityChildrenIterator> EntityTree::GetChildren(entity_t entity) const {
 	entity_t firstChild = GetFirstChild(entity);
 	return EntityIteratorRange<EntityChildrenIterator>(
 		EntityChildrenIterator(this, firstChild),
@@ -254,7 +283,7 @@ EntityIteratorRange<EntityChildrenIterator> World::GetChildren(entity_t entity) 
 	);
 }
 
-EntityIteratorRange<EntityAncestorIterator> World::GetAncestors(entity_t entity) const {
+EntityIteratorRange<EntityAncestorIterator> EntityTree::GetAncestors(entity_t entity) const {
 	entity_t parent = GetParent(entity);
 	return EntityIteratorRange<EntityAncestorIterator>(
 		EntityAncestorIterator(this, parent),
@@ -262,7 +291,7 @@ EntityIteratorRange<EntityAncestorIterator> World::GetAncestors(entity_t entity)
 	);
 }
 
-EntityIteratorRange<EntityPrefixIterator> World::GetDescendants(entity_t entity) const {
+EntityIteratorRange<EntityPrefixIterator> EntityTree::GetDescendants(entity_t entity) const {
 	entity_t firstChild = GetFirstChild(entity);
 	return EntityIteratorRange<EntityPrefixIterator>(
 		EntityPrefixIterator(this, firstChild, entity),

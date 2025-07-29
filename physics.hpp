@@ -38,6 +38,7 @@ namespace okami {
 		inline glm::vec3 TransformVector(glm::vec3 const& vector) const {
 			return m_rotation * (m_scaleShear * vector);
 		}
+
 		inline glm::mat4 AsMatrix() const {
 			glm::mat3 matrix3x3 = glm::mat3_cast(m_rotation) * m_scaleShear;
 			// Construct a 4x4 matrix from the 3x3 matrix and position
@@ -68,5 +69,12 @@ namespace okami {
 
 	Transform Transform::Inverse() const {
 		return okami::Inverse(*this);
+	}
+
+	inline Transform Lerp(Transform const& A, Transform const& B, float t) {
+		glm::vec3 position = glm::mix(A.m_position, B.m_position, t);
+		glm::quat rotation = glm::slerp(A.m_rotation, B.m_rotation, t);
+		glm::mat3 scaleShear = (1.0f - t) * A.m_scaleShear + t * B.m_scaleShear;
+		return Transform(position, rotation, scaleShear);
 	}
 }

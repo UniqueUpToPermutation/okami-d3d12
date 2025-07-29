@@ -229,18 +229,18 @@ public:
 		}
 	}
 
-	void RegisterInterfaces(InterfaceCollection& queryable) override {
-		queryable.Register<IRenderer>(this);
+    void RegisterInterfaces(InterfaceCollection& queryable) override {  
+        queryable.Register<IRenderer>(this);  
 
-		RegisterConfig<RendererConfig>(queryable, LOG(WARNING));
-	}
+		RegisterConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
+    }
 
-	void RegisterSignalHandlers(ISignalBus& eventBus) override {
+	void RegisterSignalHandlers(SignalHandlerCollection& signals) override {
 	}
 
 	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
 		// Get configuration
-		m_config = ReadConfig<RendererConfig>(queryable, LOG(WARNING));
+		m_config = ReadConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
 		
 		// Store the event handle in the member variable
 		m_eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -546,7 +546,7 @@ public:
 		}
 	}
 
-	void OnFrameBegin(Time const& time, ISignalBus& signalBus) override {
+	void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& world) override {
 		if (!m_headlessMode) {
 			glfwPollEvents();
 
@@ -663,7 +663,7 @@ public:
 		m_primitiveRenderer->DrawLines(frameData.m_commandList.Get(), lineVertices.data(), lineVertices.size());
 		m_primitiveRenderer->End();
 
-		// Draw IMGUI if initialized (only in windowed mode)
+		// Draw IMGUI if initialized 
 		if (m_imguiImpl && !m_headlessMode) {
 			m_imguiImpl->Render(frameData.m_commandList.Get());
 		}

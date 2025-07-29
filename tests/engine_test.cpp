@@ -29,7 +29,7 @@ public:
         // Mock implementation
     }
 
-    void RegisterSignalHandlers(ISignalBus& eventBus) override {
+    void RegisterSignalHandlers(SignalHandlerCollection& eventBus) override {
         // Mock implementation
     }
 
@@ -42,7 +42,7 @@ public:
         m_shutdownCalled = true;
     }
 
-    void OnFrameBegin(Time const& time, ISignalBus& signalBus) override {
+    void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& world) override {
         m_frameBeginCount++;
     }
 

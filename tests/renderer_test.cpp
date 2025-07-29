@@ -17,12 +17,11 @@ TEST(RendererTest, CreateAndRender) {
 		.m_headlessOutputFileStem = "renderer_test_output"
 	} };
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
-	OKAMI_DEFER(engine.Shutdown());
 
 	if (auto err = engine.Startup(); err.IsError()) {
 		GTEST_ASSERT_TRUE(false) << "Engine startup failed: " << err.Str();
 	}
 
 	// Render a single frame
-	engine.Run();
+	engine.Run(1);
 }

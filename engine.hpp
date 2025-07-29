@@ -11,12 +11,15 @@
 #include <typeindex>
 #include <typeinfo>
 
+#include "entity_tree.hpp"
+
 #define OKAMI_DEFER(x) auto OKAMI_DEFER_##__LINE__ = okami::ScopeGuard([&]() { x; })
 
 namespace okami {
-	using entity_t = int32_t;
-	constexpr entity_t kRoot = 0;
-	constexpr entity_t kNullEntity = -1;
+	template <typename T>
+	struct TypeWrapper {
+		using Type = T;
+	};
 
 	class ScopeGuard {
 	public:
@@ -108,6 +111,23 @@ namespace okami {
 		std::unordered_map<std::type_index, std::any> m_interfaces;
 	};
 
+	template <typename T>
+	struct ComponentAddSignal {
+		entity_t m_entity;
+		T m_component;
+	};
+
+	template <typename T>
+	struct ComponentUpdateSignal {
+		entity_t m_entity;
+		T m_component;
+	};
+
+	template <typename T>
+	struct ComponentRemoveSignal {
+		entity_t m_entity;
+	};
+
 	class ISignalBus {
 	public:
 		virtual void Publish(const std::type_info& eventType, std::any event) const = 0;
@@ -115,6 +135,21 @@ namespace okami {
 		template <typename T>
 		void Publish(T event) const {
 			Publish(typeid(T), std::make_any<T>(event));
+		}
+
+		template <typename T>
+		void AddComponent(entity_t e, T component) const {
+			Publish(ComponentAddSignal<T>{ e, std::move(component) });
+		}
+
+		template <typename T>
+		void UpdateComponent(entity_t e, T component) const {
+			Publish(ComponentUpdateSignal<T>{ e, std::move(component) });
+		}
+
+		template <typename T>
+		void RemoveComponent(entity_t e) const {
+			Publish(ComponentRemoveSignal<T>{e});
 		}
 	};
 
@@ -169,29 +204,6 @@ namespace okami {
 		}
 	};
 
-	template <typename T>
-	class ComponentAddSignal {
-		T m_component;
-	};
-
-	template <typename T>
-	class ComponentUpdateSignal {
-		T m_component;
-	};
-
-	template <typename T>
-	class ComponentRemoveSignal {
-	};
-
-	template <typename T>
-	class IComponentHandler {
-	public:
-		virtual ~IComponentHandler() = default;
-
-		virtual void Create(entity_t entity, T component) = 0;
-		virtual void Update(entity_t entity, T component) = 0;
-		virtual void Destroy(entity_t entity) = 0;
-	};
 
 	struct Error {
 		std::variant<std::monostate, std::string_view, std::string> m_message;
@@ -231,6 +243,7 @@ namespace okami {
 	struct Time {
 		double m_deltaTime;
 		double m_totalTime;
+		size_t m_frame;
 	};
 
 	class IEngineModule {
@@ -238,12 +251,16 @@ namespace okami {
 		virtual ~IEngineModule() = default;
 
 		virtual void RegisterInterfaces(InterfaceCollection& queryable) = 0;
-		virtual void RegisterSignalHandlers(ISignalBus& eventBus) = 0;
+		virtual void RegisterSignalHandlers(SignalHandlerCollection& handlers) = 0;
 
 		virtual Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) = 0;
 		virtual void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) = 0;
 
-		virtual void OnFrameBegin(Time const& time, ISignalBus& signalBus) = 0;
+		// Called at the beginning of each frame
+		// This is the only time when the module can modify the entity tree
+		virtual void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& entityTree) = 0;
+
+		// Called continuously after OnFrameBegin to handle all signals generated during the frame
 		virtual ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) = 0;
 
 		virtual std::string_view GetName() const = 0;
@@ -266,7 +283,19 @@ namespace okami {
 		std::string_view m_configFilePath = "default.yaml";
 		bool m_headlessMode = false;
 		std::string_view m_headlessOutputFileStem = "output";
-		std::optional<size_t> m_frameCount = std::nullopt;
+	};
+
+	template <typename T>
+	class IStorageAccessor {
+	public:
+		virtual ~IStorageAccessor() = default;
+		virtual T const* TryGet(entity_t entity) const = 0;
+		inline T const& Get(entity_t entity) const {
+			if (auto ptr = TryGet(entity); ptr) {
+				return *ptr;
+			}
+			throw std::runtime_error("Entity not found in storage");
+		}
 	};
 
 	class Engine final {
@@ -275,6 +304,7 @@ namespace okami {
 		std::vector<std::unique_ptr<IEngineModule>> m_modules;
 		InterfaceCollection m_interfaces;
 		SignalHandlerCollection m_signalHandlers;
+		EntityTree m_entityTree;
 
 		std::atomic<bool> m_shouldExit{ false };
 
@@ -293,11 +323,20 @@ namespace okami {
 		}
 
 		Error Startup();
-		void Run();
+		void Run(std::optional<size_t> frameCount = std::nullopt);
 		void Shutdown();
 
-		inline ISignalBus* GetSignalBus() {
-			return &m_signalHandlers;
+		EntityTree& GetEntityTree() {
+			return m_entityTree;
+		}
+
+		inline ISignalBus const& GetSignalBus() const {
+			return m_signalHandlers;
+		}
+
+		template <typename T>
+		IStorageAccessor<T>* GetStorageAccessor() {
+			return m_interfaces.Query<IStorageAccessor<T>>();
 		}
 
 		Engine(EngineParams params = {});
@@ -310,6 +349,10 @@ namespace okami {
 	};
 
 	struct ConfigModuleFactory {
+		std::unique_ptr<IEngineModule> operator()();
+	};
+
+	struct PhysicsModuleFactory {
 		std::unique_ptr<IEngineModule> operator()();
 	};
 }

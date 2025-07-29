@@ -248,7 +248,7 @@ public:
 		queryable.Register<IConfigModule>(this);
 	}
 
-	void RegisterSignalHandlers(ISignalBus& eventBus) override {
+	void RegisterSignalHandlers(SignalHandlerCollection& eventBus) override {
 	}
 
 	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
@@ -296,7 +296,7 @@ public:
 	void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
 	}
 
-	void OnFrameBegin(Time const& time, ISignalBus& signalBus) override {
+	void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& entityTree) override {
         m_deserializers.clear();
         m_configs.clear();
 	}

@@ -5,7 +5,8 @@
 #include <thread>
 #include <atomic>
 #include <algorithm>
-#include "../world.hpp"
+#include "../entity_tree.hpp"
+#include "../engine.hpp"
 
 using namespace okami;
 
@@ -49,9 +50,11 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(PerformanceTest, WorldHierarchyPerformanceTest) {
     // Test creating large hierarchies
     SignalHandlerCollection signalHandlers;
-    World world(&signalHandlers);
+    EntityTree world;
     
     auto start = std::chrono::high_resolution_clock::now();
+
+	world.BeginUpdates(signalHandlers);
     
     // Create 1000 entities in a deep hierarchy
     entity_t current = world.CreateEntity();
@@ -59,6 +62,8 @@ TEST(PerformanceTest, WorldHierarchyPerformanceTest) {
         entity_t next = world.CreateEntity(current);
         current = next;
     }
+
+    world.EndUpdates();
     
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -84,10 +89,12 @@ TEST(PerformanceTest, WorldHierarchyPerformanceTest) {
 TEST(PerformanceTest, WorldBroadHierarchyPerformanceTest) {
     // Test creating wide hierarchies
 	SignalHandlerCollection signalHandlers;
-    World world(&signalHandlers);
+    EntityTree world;
     
     auto start = std::chrono::high_resolution_clock::now();
     
+    world.BeginUpdates(signalHandlers);
+
     entity_t root = world.CreateEntity();
     
     // Create 1000 children under one parent
@@ -95,6 +102,8 @@ TEST(PerformanceTest, WorldBroadHierarchyPerformanceTest) {
     for (int i = 0; i < 1000; ++i) {
         children.push_back(world.CreateEntity(root));
     }
+
+    world.EndUpdates();
     
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -121,7 +130,9 @@ TEST(MemoryTest, WorldEntityCreationDestructionTest) {
     // Test that entities are properly cleaned up
     for (int iteration = 0; iteration < 100; ++iteration) {
         SignalHandlerCollection signalHandlers;
-        World world(&signalHandlers);
+        EntityTree world;
+
+		world.BeginUpdates(signalHandlers);
         
         // Create many entities
         std::vector<entity_t> entities;
@@ -133,6 +144,8 @@ TEST(MemoryTest, WorldEntityCreationDestructionTest) {
         for (size_t i = 0; i < entities.size() / 2; ++i) {
             world.RemoveEntity(entities[i]);
         }
+
+        world.EndUpdates();
         
         // World should clean up properly when destroyed
     }
@@ -144,31 +157,33 @@ TEST(MemoryTest, WorldEntityCreationDestructionTest) {
 // Error handling tests
 TEST(ErrorHandlingTest, WorldInvalidOperationsTest) {
     SignalHandlerCollection signalHandlers;
-    World world(&signalHandlers);
+    EntityTree world;
+
+	world.BeginUpdates(signalHandlers);
     
-    // These operations should not crash the program
-    EXPECT_NO_THROW(world.RemoveEntity(kNullEntity));
-    EXPECT_NO_THROW(world.SetParent(kNullEntity, kRoot));
-    EXPECT_NO_THROW(world.GetParent(kNullEntity));
+    EXPECT_ANY_THROW(world.RemoveEntity(kNullEntity));
+    EXPECT_ANY_THROW(world.SetParent(kNullEntity, kRoot));
+    EXPECT_ANY_THROW(world.GetParent(kNullEntity));
+    EXPECT_ANY_THROW(world.GetParent(999999));
     
-    // These should return safe values
-    EXPECT_EQ(world.GetParent(999999), kNullEntity);
-    
-    // Iterators should be safe with invalid entities
     std::vector<entity_t> children;
-    EXPECT_NO_THROW({
+    EXPECT_ANY_THROW({
         for (auto child : world.GetChildren(999999)) {
             children.push_back(child);
         }
     });
     EXPECT_EQ(children.size(), 0);
+
+    world.EndUpdates();
 }
 
 // Regression tests for specific bugs (examples)
 TEST(RegressionTest, EntityRemovalSiblingLinksTest) {
     // Test for a hypothetical bug where removing an entity breaks sibling links
     SignalHandlerCollection signalHandlers;
-    World world(&signalHandlers);
+    EntityTree world;
+
+	world.BeginUpdates(signalHandlers);
     
     entity_t parent = world.CreateEntity();
     entity_t child1 = world.CreateEntity(parent);
@@ -187,12 +202,16 @@ TEST(RegressionTest, EntityRemovalSiblingLinksTest) {
     EXPECT_EQ(remainingChildren.size(), 2);
     EXPECT_TRUE(std::find(remainingChildren.begin(), remainingChildren.end(), child1) != remainingChildren.end());
     EXPECT_TRUE(std::find(remainingChildren.begin(), remainingChildren.end(), child3) != remainingChildren.end());
+
+    world.EndUpdates();
 }
 
 TEST(RegressionTest, SetParentMultipleTimesTest) {
     // Test for potential issues when setting parent multiple times
     SignalHandlerCollection signalHandlers;
-    World world(&signalHandlers);
+    EntityTree world;
+
+	world.BeginUpdates(signalHandlers);
     
     entity_t entity1 = world.CreateEntity();
     entity_t entity2 = world.CreateEntity();
@@ -220,4 +239,6 @@ TEST(RegressionTest, SetParentMultipleTimesTest) {
         entity2Children.push_back(child);
     }
     EXPECT_TRUE(std::find(entity2Children.begin(), entity2Children.end(), target) == entity2Children.end());
+
+    world.EndUpdates();
 }

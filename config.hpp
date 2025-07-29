@@ -13,6 +13,8 @@
 #define OKAMI_CONFIG_FIELD(name) \
     deserializer.Visit(#name, name);
 
+#define LOG_WRAP(severity) []() -> std::ostream& { return LOG(severity); }
+
 namespace okami {
     class IConfigDeserializer;
 
@@ -80,22 +82,22 @@ namespace okami {
 		}
     };
 
-	template <ConfigStruct T, typename Logger>
-    T ReadConfig(IInterfaceQueryable& queryable, Logger& log) {
+	template <ConfigStruct T>
+    T ReadConfig(IInterfaceQueryable& queryable, std::function<std::ostream&()> logStreamGenerator) {
         if (auto configModule = queryable.Query<IConfigModule>()) {
             return configModule->Read<T>();
         } else {
-			log << "Config module not found for type: " << T{}.Name() << "\n";
+            logStreamGenerator() << "Config module not found for type: " << T{}.Name() << "\n";
             return T{};
         }
 	}
 
-    template <ConfigStruct T, typename Logger>
-    void RegisterConfig(IInterfaceQueryable& queryable, Logger& log) {
+    template <ConfigStruct T>
+    void RegisterConfig(IInterfaceQueryable& queryable, std::function<std::ostream&()> logStreamGenerator) {
         if (auto configModule = queryable.Query<IConfigModule>()) {
             configModule->Register<T>();
         } else {
-            log << "Config module not found for type: " << T{}.Name() << "\n";
+            logStreamGenerator() << "Config module not found for type: " << T{}.Name() << "\n";
         }
 	}
 }
