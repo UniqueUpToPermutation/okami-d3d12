@@ -1,17 +1,18 @@
+#include "assert.hpp"
+
 #include "d3d12_descriptor_pool.hpp"
 
 using namespace okami;
 
-#include <cassert>
 #include <string>
 
 D3D12_CPU_DESCRIPTOR_HANDLE DescriptorPool::GetCpuHandle(Handle handle) const {
-	assert(m_heap);
+	OKAMI_ASSERT(m_heap, "DescriptorPool::GetCpuHandle called on an uninitialized pool");
 	return { m_heapStartCpu.ptr + handle * m_heapHandleIncrement };
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE DescriptorPool::GetGpuHandle(Handle handle) const {
-	assert(m_heap);
+	OKAMI_ASSERT(m_heap, "DescriptorPool::GetGpuHandle called on an uninitialized pool");
 	return { m_heapStartGpu.ptr + handle * m_heapHandleIncrement };
 }
 

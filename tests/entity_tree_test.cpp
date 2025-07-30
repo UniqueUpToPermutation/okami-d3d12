@@ -228,10 +228,11 @@ TEST_F(EntityTreeTest, ComplexHierarchyTest) {
 
 // Edge Case Tests
 TEST_F(EntityTreeTest, InvalidEntityOperationsTest) {
+#ifndef NDEBUG
 	entity_t invalidEntity = 9999;
 
 	// Operations on invalid entities should be safe
-	EXPECT_ANY_THROW(world->GetParent(invalidEntity), kNullEntity);
+	EXPECT_ANY_THROW(world->GetParent(invalidEntity));
 	EXPECT_ANY_THROW(world->SetParent(invalidEntity, kRoot));
 	EXPECT_ANY_THROW(world->RemoveEntity(invalidEntity));
 
@@ -243,9 +244,11 @@ TEST_F(EntityTreeTest, InvalidEntityOperationsTest) {
 		}
 	});
 	EXPECT_EQ(children.size(), 0);
+#endif
 }
 
 TEST_F(EntityTreeTest, SetParentToInvalidEntityTest) {
+#ifndef NDEBUG
 	entity_t entity = world->CreateEntity();
 	entity_t invalidParent = 9999;
 
@@ -253,6 +256,7 @@ TEST_F(EntityTreeTest, SetParentToInvalidEntityTest) {
 
 	// Should not change parent
 	EXPECT_EQ(world->GetParent(entity), kRoot);
+#endif
 }
 
 // Iterator Increment Tests

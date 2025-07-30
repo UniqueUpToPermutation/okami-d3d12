@@ -229,11 +229,11 @@ public:
 		}
 	}
 
-    void RegisterInterfaces(InterfaceCollection& queryable) override {  
-        queryable.Register<IRenderer>(this);  
+	void RegisterInterfaces(InterfaceCollection& queryable) override {
+		queryable.Register<IRenderer>(this);
 
 		RegisterConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
-    }
+	}
 
 	void RegisterSignalHandlers(SignalHandlerCollection& signals) override {
 	}
@@ -241,7 +241,7 @@ public:
 	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
 		// Get configuration
 		m_config = ReadConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
-		
+
 		// Store the event handle in the member variable
 		m_eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (!m_eventHandle) {
@@ -270,7 +270,7 @@ public:
 		}
 
 		// Create D3D12 device
-#if defined(_DEBUG)
+#ifndef NDEBUG
 		LOG(INFO) << "Enabling D3D12 debug layer";
 		// Enable the D3D12 debug layer if in a debug build
 		{
@@ -522,7 +522,7 @@ public:
 		m_commandQueue.Reset();
 		m_swapChain.Reset();
 
-#if defined(_DEBUG)
+#ifndef NDEBUG
 		if (m_d3d12Device) {
 			ComPtr<ID3D12DebugDevice> debugDevice;
 			if (SUCCEEDED(m_d3d12Device->QueryInterface(IID_PPV_ARGS(&debugDevice)))) {

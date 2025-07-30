@@ -1,9 +1,10 @@
 #include "entity_tree.hpp"
 #include <unordered_map>
 #include <iostream>
-#include <cassert>
+#include "assert.hpp"
 
 #include "engine.hpp"
+#include "pool.hpp"
 
 using namespace okami;
 
@@ -22,92 +23,51 @@ struct EntityTreeNode {
 
 namespace okami {
 	struct EntityTreeImpl {
-		entity_t m_nextEntityId = 1;
-		std::unordered_map<entity_t, EntityTreeNode> m_entities;
-
-		EntityTreeImpl() {
-			m_entities.emplace(kRoot, EntityTreeNode(kRoot));
-			m_entities[kRoot].m_parent = kNullEntity;
-		}
-
-		entity_t GetNextSibling(entity_t entity) const {
-			auto it = m_entities.find(entity);
-			if (it == m_entities.end()) {
-				throw std::runtime_error("Entity does not exist");
-			}
-			return it->second.m_nextSibling;
-		}
-
-		entity_t GetFirstChild(entity_t entity) const {
-			auto it = m_entities.find(entity);
-			if (it == m_entities.end()) {
-				throw std::runtime_error("Entity does not exist");
-			}
-			return it->second.m_firstChild;
-		}
-
-		entity_t GetParent(entity_t entity) const {
-			auto it = m_entities.find(entity);
-			if (it == m_entities.end()) {
-				throw std::runtime_error("Entity does not exist");
-			}
-			return  it->second.m_parent ;
-		}
+		Pool<EntityTreeNode, entity_t> m_entityPool;
 	};
+}
 
-	void EntityTreeImplDeleter::operator()(EntityTreeImpl* impl) const {
-		delete impl;
-	}
+void EntityTreeImplDeleter::operator()(EntityTreeImpl* impl) const {
+	delete impl;
 }
 
 EntityTree::EntityTree() : m_impl(std::unique_ptr<EntityTreeImpl, EntityTreeImplDeleter>(new EntityTreeImpl())) {
-	// Initialize the root entity
-	m_impl->m_entities.emplace(kRoot, EntityTreeNode(kRoot));
-	m_impl->m_entities[kRoot].m_parent = kNullEntity;
+	auto root = m_impl->m_entityPool.Allocate();
+	OKAMI_ASSERT(root == kRoot, "Root entity should always be at index 0");
 }
 
 entity_t EntityTree::CreateEntity(entity_t parent) {
-	entity_t newId = m_impl->m_nextEntityId++;
+	entity_t newId = m_impl->m_entityPool.Allocate();
 	AddEntity(newId, parent);
 
-	assert(m_signalBus != nullptr && "BeginUpdates must be called before CreateEntity");
+	OKAMI_ASSERT(m_signalBus != nullptr, "BeginUpdates must be called before CreateEntity");
 	m_signalBus->Publish(EntityCreateSignal{ .m_entity = newId, .m_parent = parent });
 
 	return newId;
 }
 
 void EntityTree::AddEntity(entity_t entity, entity_t parent) {
-	if (m_impl->m_entities.count(entity)) {
-		throw std::runtime_error("Entity already exists");
-	}
-
-	auto parentIt = m_impl->m_entities.find(parent);
-	if (parentIt == m_impl->m_entities.end()) {
-		throw std::runtime_error("Parent entity does not exist");
-	}
+	OKAMI_ASSERT(!m_impl->m_entityPool.IsFree(parent), "Parent entity must exist in the tree");
 
 	EntityTreeNode newNode(entity);
 	newNode.m_parent = parent;
 
-	auto& parentNode = parentIt->second;
+	auto& parentNode = m_impl->m_entityPool[parent];
 	if (parentNode.m_firstChild == kNullEntity) {
 		parentNode.m_firstChild = entity;
 		parentNode.m_lastChild = entity;
 	}
 	else {
-		if (auto lastChildIt = m_impl->m_entities.find(parentNode.m_lastChild);
-			lastChildIt != m_impl->m_entities.end()) {
-			lastChildIt->second.m_nextSibling = entity;
+		// Link to the last child
+		if (parentNode.m_lastChild != kNullEntity) {
 			newNode.m_previousSibling = parentNode.m_lastChild;
+			m_impl->m_entityPool[parentNode.m_lastChild].m_nextSibling = entity;
+			parentNode.m_lastChild = entity;
 		}
-		parentNode.m_lastChild = entity;
 	}
 
-	m_impl->m_entities.emplace(entity, std::move(newNode));
-
-	if (entity >= m_impl->m_nextEntityId) {
-		m_impl->m_nextEntityId = entity + 1;
-	}
+	// Update the pool with the new node
+	m_impl->m_entityPool[entity] = newNode;
 }
 
 void EntityTree::RemoveEntity(entity_t entity) {
@@ -115,58 +75,39 @@ void EntityTree::RemoveEntity(entity_t entity) {
 		throw std::runtime_error("Cannot remove root entity");
 	}
 
-	auto entityIt = m_impl->m_entities.find(entity);
-	if (entityIt == m_impl->m_entities.end()) {
-		throw std::runtime_error("Entity does not exist");
-	}
-
-	const auto& node = entityIt->second;
+	OKAMI_ASSERT(m_impl->m_entityPool.IsFree(entity) == false, "Entity must exist in the tree");
+	const auto& node = m_impl->m_entityPool[entity];
 
 	// Remove children recursively
 	entity_t child = node.m_firstChild;
 	while (child != kNullEntity) {
-		if (auto childIt = m_impl->m_entities.find(child);
-			childIt != m_impl->m_entities.end()) {
-			entity_t nextChild = childIt->second.m_nextSibling;
-			RemoveEntity(child);
-			child = nextChild;
-		}
-		else {
-			break;
-		}
+		auto nextChild = m_impl->m_entityPool[child].m_nextSibling;
+		RemoveEntity(child);
+		child = nextChild;
 	}
 
 	// Update parent's child pointers
 	if (node.m_parent != kNullEntity) {
-		if (auto parentIt = m_impl->m_entities.find(node.m_parent);
-			parentIt != m_impl->m_entities.end()) {
-			auto& parent = parentIt->second;
-			if (parent.m_firstChild == entity) {
-				parent.m_firstChild = node.m_nextSibling;
-			}
-			if (parent.m_lastChild == entity) {
-				parent.m_lastChild = node.m_previousSibling;
-			}
+		auto& parent = m_impl->m_entityPool[node.m_parent];
+		if (parent.m_firstChild == entity) {
+			parent.m_firstChild = node.m_nextSibling;
+		}
+		if (parent.m_lastChild == entity) {
+			parent.m_lastChild = node.m_previousSibling;
 		}
 	}
 
 	// Update sibling links
 	if (node.m_previousSibling != kNullEntity) {
-		if (auto prevIt = m_impl->m_entities.find(node.m_previousSibling);
-			prevIt != m_impl->m_entities.end()) {
-			prevIt->second.m_nextSibling = node.m_nextSibling;
-		}
+		m_impl->m_entityPool[node.m_previousSibling].m_nextSibling = node.m_nextSibling;
 	}
 	if (node.m_nextSibling != kNullEntity) {
-		if (auto nextIt = m_impl->m_entities.find(node.m_nextSibling);
-			nextIt != m_impl->m_entities.end()) {
-			nextIt->second.m_previousSibling = node.m_previousSibling;
-		}
+		m_impl->m_entityPool[node.m_nextSibling].m_previousSibling = node.m_previousSibling;
 	}
 
-	m_impl->m_entities.erase(entityIt);
+	m_impl->m_entityPool.Free(entity);
 
-	assert(m_signalBus != nullptr && "BeginUpdates must be called before RemoveEntity");
+	OKAMI_ASSERT(m_signalBus != nullptr, "BeginUpdates must be called before RemoveEntity");
 	m_signalBus->Publish(EntityRemoveSignal{ .m_entity = entity });
 }
 
@@ -179,99 +120,93 @@ void EntityTree::EndUpdates() {
 }
 
 void EntityTree::SetParent(entity_t entity, entity_t newParent) {
+	// Cannot reparent the root entity
 	if (entity == kRoot) {
-		throw std::runtime_error("Cannot set parent for root entity");
+		throw std::runtime_error("Cannot reparent root entity");
 	}
 
-	auto entityIt = m_impl->m_entities.find(entity);
-	auto parentIt = m_impl->m_entities.find(newParent);
+	// Validate entities exist
+	OKAMI_ASSERT(!m_impl->m_entityPool.IsFree(entity), "Entity must exist in the tree");
+	OKAMI_ASSERT(!m_impl->m_entityPool.IsFree(newParent), "New parent entity must exist in the tree");
 
-	if (entityIt == m_impl->m_entities.end() ||
-		parentIt == m_impl->m_entities.end()) {
-		throw std::runtime_error("Entity or new parent does not exist");
+	entity_t oldParent = m_impl->m_entityPool[entity].m_parent;
+
+	// If already the parent, do nothing
+	if (oldParent == newParent) {
+		return;
 	}
 
-	// Check for circular dependency
-	entity_t ancestor = newParent;
-	while (ancestor != kNullEntity) {
-		if (ancestor == entity) return;
-		if (auto ancestorIt = m_impl->m_entities.find(ancestor);
-			ancestorIt != m_impl->m_entities.end()) {
-			ancestor = ancestorIt->second.m_parent;
+	// Check for circular dependency - newParent cannot be a descendant of entity
+	entity_t checkParent = newParent;
+	while (checkParent != kNullEntity) {
+		if (checkParent == entity) {
+			// Circular dependency detected, do nothing
+			return;
 		}
-		else {
-			break;
-		}
+		checkParent = m_impl->m_entityPool[checkParent].m_parent;
 	}
 
-	auto& node = entityIt->second;
-	entity_t oldParent = node.m_parent;
-
-	// Remove from old parent
+	// Remove entity from old parent's child list
+	auto& entityNode = m_impl->m_entityPool[entity];
 	if (oldParent != kNullEntity) {
-		if (auto oldParentIt = m_impl->m_entities.find(oldParent);
-			oldParentIt != m_impl->m_entities.end()) {
-			auto& oldParentNode = oldParentIt->second;
-
-			if (oldParentNode.m_firstChild == entity) {
-				oldParentNode.m_firstChild = node.m_nextSibling;
-			}
-			if (oldParentNode.m_lastChild == entity) {
-				oldParentNode.m_lastChild = node.m_previousSibling;
-			}
+		auto& oldParentNode = m_impl->m_entityPool[oldParent];
+		
+		// Update parent's first/last child pointers
+		if (oldParentNode.m_firstChild == entity) {
+			oldParentNode.m_firstChild = entityNode.m_nextSibling;
 		}
-
-		// Update sibling links
-		if (node.m_previousSibling != kNullEntity) {
-			if (auto prevIt = m_impl->m_entities.find(node.m_previousSibling);
-				prevIt != m_impl->m_entities.end()) {
-				prevIt->second.m_nextSibling = node.m_nextSibling;
-			}
-		}
-		if (node.m_nextSibling != kNullEntity) {
-			if (auto nextIt = m_impl->m_entities.find(node.m_nextSibling);
-				nextIt != m_impl->m_entities.end()) {
-				nextIt->second.m_previousSibling = node.m_previousSibling;
-			}
+		if (oldParentNode.m_lastChild == entity) {
+			oldParentNode.m_lastChild = entityNode.m_previousSibling;
 		}
 	}
 
-	// Clear sibling links
-	node.m_previousSibling = kNullEntity;
-	node.m_nextSibling = kNullEntity;
+	// Update sibling links in old parent
+	if (entityNode.m_previousSibling != kNullEntity) {
+		m_impl->m_entityPool[entityNode.m_previousSibling].m_nextSibling = entityNode.m_nextSibling;
+	}
+	if (entityNode.m_nextSibling != kNullEntity) {
+		m_impl->m_entityPool[entityNode.m_nextSibling].m_previousSibling = entityNode.m_previousSibling;
+	}
+
+	// Clear entity's sibling links
+	entityNode.m_nextSibling = kNullEntity;
+	entityNode.m_previousSibling = kNullEntity;
 
 	// Set new parent
-	node.m_parent = newParent;
+	entityNode.m_parent = newParent;
 
-	// Add to new parent's children
-	auto& newParentNode = parentIt->second;
+	// Add entity to new parent's child list
+	auto& newParentNode = m_impl->m_entityPool[newParent];
 	if (newParentNode.m_firstChild == kNullEntity) {
+		// First child
 		newParentNode.m_firstChild = entity;
 		newParentNode.m_lastChild = entity;
-	}
-	else {
-		if (auto lastChildIt = m_impl->m_entities.find(newParentNode.m_lastChild);
-			lastChildIt != m_impl->m_entities.end()) {
-			lastChildIt->second.m_nextSibling = entity;
-			node.m_previousSibling = newParentNode.m_lastChild;
+	} else {
+		// Add as last child
+		if (newParentNode.m_lastChild != kNullEntity) {
+			entityNode.m_previousSibling = newParentNode.m_lastChild;
+			m_impl->m_entityPool[newParentNode.m_lastChild].m_nextSibling = entity;
 		}
 		newParentNode.m_lastChild = entity;
 	}
 
-	assert(m_signalBus != nullptr && "BeginUpdates must be called before SetParent");
+	OKAMI_ASSERT(m_signalBus != nullptr, "BeginUpdates must be called before SetParent");
 	m_signalBus->Publish(EntityParentChangeSignal{.m_entity = entity, .m_oldParent = oldParent, .m_newParent = newParent});
 }
 
 entity_t EntityTree::GetParent(entity_t entity) const {
-	return m_impl->GetParent(entity);
+	OKAMI_ASSERT(m_impl != nullptr, "EntityTreeImpl must be initialized");
+	return m_impl->m_entityPool[entity].m_parent;
 }
 
 entity_t EntityTree::GetNextSibling(entity_t entity) const {
-	return m_impl->GetNextSibling(entity);
+	OKAMI_ASSERT(m_impl != nullptr, "EntityTreeImpl must be initialized");
+	return m_impl->m_entityPool[entity].m_nextSibling;
 }
 
 entity_t EntityTree::GetFirstChild(entity_t entity) const {
-	return m_impl->GetFirstChild(entity);
+	OKAMI_ASSERT(m_impl != nullptr, "EntityTreeImpl must be initialized");
+	return m_impl->m_entityPool[entity].m_firstChild;
 }
 
 // Iterator range implementations

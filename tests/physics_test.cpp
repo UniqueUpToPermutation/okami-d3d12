@@ -3,6 +3,8 @@
 #include <glm/vec3.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include "utils.hpp"
+
 using namespace okami;
 
 TEST(TransformTest, DefaultConstructor) {
@@ -54,19 +56,24 @@ TEST(TransformTest, Multiplication) {
 class PhysicsModuleTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        en.Startup();
+        std::vector<char const*> argsv;
+        en = std::make_unique<Engine>(GetTestEngineParams(argsv));
+        
+        if (auto err = en->Startup(); err.IsError()) {
+            FAIL() << "Engine startup failed: " << err.Str();
+		}
     }
 
     void TearDown() override {
-        en.Shutdown();
+        en.reset();
     }
 
-    Engine en;
+    std::unique_ptr<Engine> en;
 };
 
 TEST_F(PhysicsModuleTest, TransformStorage) {
-	auto& entityTree = en.GetEntityTree();
-    auto& signalBus = en.GetSignalBus();
+	auto& entityTree = en->GetEntityTree();
+    auto& signalBus = en->GetSignalBus();
 
 	entityTree.BeginUpdates(signalBus);
 	entity_t entity1 = entityTree.CreateEntity();
@@ -76,21 +83,21 @@ TEST_F(PhysicsModuleTest, TransformStorage) {
 	signalBus.AddComponent(entity1, Transform(glm::vec3(1.0f, 2.0f, 3.0f)));
 	signalBus.AddComponent(entity2, Transform(glm::vec3(4.0f, 5.0f, 6.0f)));
 
-    en.Run(1);
+    en->Run(1);
 
-    auto storage = en.GetStorageAccessor<Transform>();
+    auto storage = en->GetStorageAccessor<Transform>();
 	EXPECT_EQ(storage->Get(entity1).m_position, glm::vec3(1.0f, 2.0f, 3.0f));
 	EXPECT_EQ(storage->Get(entity2).m_position, glm::vec3(4.0f, 5.0f, 6.0f));
 
 	signalBus.UpdateComponent(entity1, Transform(glm::vec3(7.0f, 8.0f, 9.0f)));
 
-    en.Run(1);
+    en->Run(1);
 
 	EXPECT_EQ(storage->Get(entity1).m_position, glm::vec3(7.0f, 8.0f, 9.0f));
 
 	signalBus.RemoveComponent<Transform>(entity2);
 
-    en.Run(1);
+    en->Run(1);
 
 	EXPECT_THROW(storage->Get(entity2), std::runtime_error);
 
@@ -98,7 +105,7 @@ TEST_F(PhysicsModuleTest, TransformStorage) {
     entityTree.RemoveEntity(entity1);
     entityTree.EndUpdates();
 
-    en.Run(1);
+    en->Run(1);
 
 	EXPECT_THROW(storage->Get(entity1), std::runtime_error);
 }

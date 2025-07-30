@@ -1,7 +1,4 @@
-﻿// Engine.cpp : Defines the entry point for the application.
-//
-
-#include "engine.hpp"
+﻿#include "engine.hpp"
 #include "config.hpp"
 
 #include <chrono>
@@ -19,9 +16,14 @@ Engine::Engine(EngineParams params) : m_params(params) {
 	}
 	google::InitGoogleLogging(name.c_str());
 
-#ifdef _DEBUG
+#ifndef NDEBUG
 	google::SetStderrLogging(google::LogSeverity::GLOG_INFO); // Enable INFO and WARNING printouts in debug mode
 	google::LogToStderr(); // Ensure logs are printed to stderr
+#else
+	google::SetStderrLogging(google::LogSeverity::GLOG_ERROR);
+	if (params.m_forceLogToConsole) {
+		google::LogToStderr();
+	}
 #endif
 
 	AddModuleFromFactory<ConfigModuleFactory>();
@@ -126,13 +128,13 @@ void Engine::Run(std::optional<size_t> runFrameCount) {
 			};
 
 		updateFrame();
-		
+		 
 		// Render frame
 		if (renderer) {
 			renderer->Render();
 		}
 
-		if (m_params.m_headlessMode) {
+		if (m_params.m_headlessMode && renderer) {
 			std::string outputFile = std::string(m_params.m_headlessOutputFileStem) + "_" + std::to_string(frameCount) + ".dds";
 			LOG(INFO) << "Saving headless frame to: " << outputFile;
 			renderer->SaveToFile(outputFile);

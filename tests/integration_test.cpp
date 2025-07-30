@@ -156,6 +156,7 @@ TEST(MemoryTest, WorldEntityCreationDestructionTest) {
 
 // Error handling tests
 TEST(ErrorHandlingTest, WorldInvalidOperationsTest) {
+#ifndef NDEBUG
     SignalHandlerCollection signalHandlers;
     EntityTree world;
 
@@ -175,6 +176,7 @@ TEST(ErrorHandlingTest, WorldInvalidOperationsTest) {
     EXPECT_EQ(children.size(), 0);
 
     world.EndUpdates();
+#endif
 }
 
 // Regression tests for specific bugs (examples)

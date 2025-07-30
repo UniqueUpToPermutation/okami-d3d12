@@ -146,7 +146,8 @@ foreach(HLSL_FILE ${HLSL_FILES})
         # If the entry point function is found in the shader source
         if("${SHADER_CONTENT}" MATCHES "${ENTRY_POINT}")
             add_hlsl_shader(Engine ${HLSL_FILE} ${SHADER_TYPE} ${ENTRY_POINT})
-            set(COMPILED_SHADER_PATH "${CMAKE_BINARY_DIR}/shaders/${SHADER_DIR_NAME}_${SHADER_NAME}_${SHADER_TYPE}.cso")
+            # Fix: Use the same path format as the add_hlsl_shader function
+            set(COMPILED_SHADER_PATH "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_${SHADER_TYPE}.cso")
             list(APPEND ALL_COMPILED_SHADERS ${COMPILED_SHADER_PATH})
             message(STATUS "  Found ${ENTRY_POINT} -> will compile as ${SHADER_TYPE}")
         endif()

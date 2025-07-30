@@ -283,6 +283,7 @@ namespace okami {
 		std::string_view m_configFilePath = "default.yaml";
 		bool m_headlessMode = false;
 		std::string_view m_headlessOutputFileStem = "output";
+		bool m_forceLogToConsole = false;
 	};
 
 	template <typename T>
