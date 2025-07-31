@@ -36,12 +36,11 @@ EntityTree::EntityTree() : m_impl(std::unique_ptr<EntityTreeImpl, EntityTreeImpl
 	OKAMI_ASSERT(root == kRoot, "Root entity should always be at index 0");
 }
 
-entity_t EntityTree::CreateEntity(entity_t parent) {
+entity_t EntityTree::CreateEntity(ISignalBus const& signalBus, entity_t parent) {
 	entity_t newId = m_impl->m_entityPool.Allocate();
 	AddEntity(newId, parent);
 
-	OKAMI_ASSERT(m_signalBus != nullptr, "BeginUpdates must be called before CreateEntity");
-	m_signalBus->Publish(EntityCreateSignal{ .m_entity = newId, .m_parent = parent });
+	signalBus.Publish(EntityCreateSignal{ .m_entity = newId, .m_parent = parent });
 
 	return newId;
 }
@@ -70,7 +69,7 @@ void EntityTree::AddEntity(entity_t entity, entity_t parent) {
 	m_impl->m_entityPool[entity] = newNode;
 }
 
-void EntityTree::RemoveEntity(entity_t entity) {
+void EntityTree::RemoveEntity(ISignalBus const& signalBus, entity_t entity) {
 	if (entity == kRoot) {
 		throw std::runtime_error("Cannot remove root entity");
 	}
@@ -82,7 +81,7 @@ void EntityTree::RemoveEntity(entity_t entity) {
 	entity_t child = node.m_firstChild;
 	while (child != kNullEntity) {
 		auto nextChild = m_impl->m_entityPool[child].m_nextSibling;
-		RemoveEntity(child);
+		RemoveEntity(signalBus, child);
 		child = nextChild;
 	}
 
@@ -107,19 +106,10 @@ void EntityTree::RemoveEntity(entity_t entity) {
 
 	m_impl->m_entityPool.Free(entity);
 
-	OKAMI_ASSERT(m_signalBus != nullptr, "BeginUpdates must be called before RemoveEntity");
-	m_signalBus->Publish(EntityRemoveSignal{ .m_entity = entity });
+	signalBus.Publish(EntityRemoveSignal{ .m_entity = entity });
 }
 
-void EntityTree::BeginUpdates(ISignalBus const& signalBus) {
-	m_signalBus = &signalBus;
-}
-
-void EntityTree::EndUpdates() {
-	m_signalBus = nullptr;
-}
-
-void EntityTree::SetParent(entity_t entity, entity_t newParent) {
+void EntityTree::SetParent(ISignalBus const& signalBus, entity_t entity, entity_t newParent) {
 	// Cannot reparent the root entity
 	if (entity == kRoot) {
 		throw std::runtime_error("Cannot reparent root entity");
@@ -190,8 +180,7 @@ void EntityTree::SetParent(entity_t entity, entity_t newParent) {
 		newParentNode.m_lastChild = entity;
 	}
 
-	OKAMI_ASSERT(m_signalBus != nullptr, "BeginUpdates must be called before SetParent");
-	m_signalBus->Publish(EntityParentChangeSignal{.m_entity = entity, .m_oldParent = oldParent, .m_newParent = newParent});
+	signalBus.Publish(EntityParentChangeSignal{.m_entity = entity, .m_oldParent = oldParent, .m_newParent = newParent});
 }
 
 entity_t EntityTree::GetParent(entity_t entity) const {

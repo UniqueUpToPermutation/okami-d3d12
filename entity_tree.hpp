@@ -86,18 +86,14 @@ namespace okami
 	class EntityTree {
 	private:
 		std::unique_ptr<EntityTreeImpl, EntityTreeImplDeleter> m_impl;
-		ISignalBus const* m_signalBus = nullptr;
 
 	public:
 		EntityTree();
 
 		// Basic entity management
-		entity_t CreateEntity(entity_t parent = kRoot);
-		void RemoveEntity(entity_t entity);
-		void SetParent(entity_t entity, entity_t parent = kRoot);
-
-		void BeginUpdates(ISignalBus const& signalBus);
-		void EndUpdates();
+		entity_t CreateEntity(ISignalBus const& signalBus, entity_t parent = kRoot);
+		void RemoveEntity(ISignalBus const& signalBus, entity_t entity);
+		void SetParent(ISignalBus const& signalBus, entity_t entity, entity_t parent = kRoot);
 
 		// Hierarchy navigation
 		entity_t GetParent(entity_t entity) const;

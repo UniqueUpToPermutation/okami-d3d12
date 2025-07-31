@@ -1,5 +1,6 @@
 #include "physics.hpp"
 #include "storage.hpp"
+#include "transform.hpp"
 
 using namespace okami;
 
@@ -24,9 +25,7 @@ public:
 	}
 
 	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {
-		m_storage.ProcessSignals();
-
-		return ModuleResult{ true };
+		return m_storage.ProcessSignals();
 	}
 
 	std::string_view GetName() const override {

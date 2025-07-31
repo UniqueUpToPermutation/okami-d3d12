@@ -29,6 +29,7 @@
 #include "d3d12_descriptor_pool.hpp"
 #include "d3d12_primitive_renderer.hpp"
 #include "d3d12_imgui.hpp"
+#include "d3d12_triangle.hpp"
 
 // Depth buffer format
 constexpr DXGI_FORMAT kBackbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -209,6 +210,10 @@ private:
 	bool m_headlessMode = false;
 	ComPtr<ID3D12Resource> m_readbackBuffer;
 
+	TriangleRenderer m_triangleRenderer;
+
+	IStorageAccessor<Transform>* m_transforms;
+
 public:
 	RendererModule(bool headless = false) :
 		m_headlessMode(headless) {
@@ -233,12 +238,20 @@ public:
 		queryable.Register<IRenderer>(this);
 
 		RegisterConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
+
+		m_triangleRenderer.RegisterInterfaces(queryable);
 	}
 
 	void RegisterSignalHandlers(SignalHandlerCollection& signals) override {
+		m_triangleRenderer.RegisterSignalHandlers(signals);
 	}
 
 	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+		m_transforms = queryable.QueryStorage<Transform>();
+		if (m_transforms == nullptr) {
+			return Error("Transform storage not found!");
+		}
+		
 		// Get configuration
 		m_config = ReadConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
 
@@ -499,6 +512,14 @@ public:
 			m_imguiImpl = std::move(imgui.value());
 		}
 
+		if (m_triangleRenderer.Startup(
+			*m_d3d12Device.Get(),
+			GetBackbufferRenderTargetState(),
+			static_cast<int>(m_perFrameData.size())
+		).IsError()) {
+			return Error("Failed to initialize TriangleRenderer");
+		}
+
 		return Error{}; // Success
 	}
 
@@ -509,6 +530,7 @@ public:
 			frameData.m_commandList->Reset(frameData.m_commandAllocator.Get(), nullptr);
 		}
 
+		m_triangleRenderer = {};
 		m_imguiImpl.reset();
 		m_primitiveRenderer.reset();
 		m_readbackBuffer.Reset();
@@ -565,7 +587,7 @@ public:
 
 	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {
 		// No specific signals to handle in this module
-		return {};
+		return m_triangleRenderer.ProcessSignals();
 	}
 
 	void Render() override {
@@ -638,30 +660,41 @@ public:
 		frameData.m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		frameData.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-		// Draw triangle and lines with depth testing
-		m_primitiveRenderer->BeginTriangles(frameData.m_commandList.Get());
+		m_triangleRenderer.Render(
+			*m_d3d12Device.Get(),
+			*frameData.m_commandList.Get(),
+			CameraInfo{
+				.m_viewMatrix = glm::identity<glm::mat4>(),
+				.m_projectionMatrix = glm::identity<glm::mat4>(),
+			},
+			*m_transforms
+		);
+		
+		/*
+			m_primitiveRenderer->BeginTriangles(frameData.m_commandList.Get());
 
-		// Triangle with varying Z values to test depth
-		std::array<VertexPositionColor, 3> triangleVertices = {
-			VertexPositionColor{ { 0.5f, 0.75f, 0.5f }, { 1.0f, 1.0f, 0.0f } },
-			VertexPositionColor{ { 0.75f, 0.25f, 0.0f }, { 0.0f, 1.0f, 1.0f } },
-			VertexPositionColor{ { 0.25f, 0.25f, 0.8f }, { 1.0f, 0.0f, 1.0f } }
-		};
-		m_primitiveRenderer->DrawTriangles(frameData.m_commandList.Get(), triangleVertices.data(), triangleVertices.size());
-		m_primitiveRenderer->End();
+			// Triangle with varying Z values to test depth
+			std::array<VertexPositionColor, 3> triangleVertices = {
+				VertexPositionColor{ { 0.5f, 0.75f, 0.5f }, { 1.0f, 1.0f, 0.0f } },
+				VertexPositionColor{ { 0.75f, 0.25f, 0.0f }, { 0.0f, 1.0f, 1.0f } },
+				VertexPositionColor{ { 0.25f, 0.25f, 0.8f }, { 1.0f, 0.0f, 1.0f } }
+			};
+			m_primitiveRenderer->DrawTriangles(frameData.m_commandList.Get(), triangleVertices.data(), triangleVertices.size());
+			m_primitiveRenderer->End();
 
-		m_primitiveRenderer->BeginLines(frameData.m_commandList.Get());
-		// Line strip with varying Z values
-		std::array<VertexPositionColor, 6> lineVertices = {
-			VertexPositionColor{ { -0.5f, 0.75f, 0.3f }, { 1.0f, 0.0f, 0.0f } },
-			VertexPositionColor{ { -0.75f, 0.25f, 0.6f }, { 0.0f, 1.0f, 1.0f } },
-			VertexPositionColor{ { -0.75f, 0.25f, 0.6f }, { 0.0f, 1.0f, 1.0f } },
-			VertexPositionColor{ { -0.25f, 0.25f, 0.1f }, { 1.0f, 1.0f, 1.0f } },
-			VertexPositionColor{ { -0.25f, 0.25f, 0.1f }, { 1.0f, 1.0f, 1.0f } },
-			VertexPositionColor{ { -0.5f, 0.75f, 0.3f }, { 1.0f, 0.0f, 0.0f } },
-		};
-		m_primitiveRenderer->DrawLines(frameData.m_commandList.Get(), lineVertices.data(), lineVertices.size());
-		m_primitiveRenderer->End();
+			m_primitiveRenderer->BeginLines(frameData.m_commandList.Get());
+			// Line strip with varying Z values
+			std::array<VertexPositionColor, 6> lineVertices = {
+				VertexPositionColor{ { -0.5f, 0.75f, 0.3f }, { 1.0f, 0.0f, 0.0f } },
+				VertexPositionColor{ { -0.75f, 0.25f, 0.6f }, { 0.0f, 1.0f, 1.0f } },
+				VertexPositionColor{ { -0.75f, 0.25f, 0.6f }, { 0.0f, 1.0f, 1.0f } },
+				VertexPositionColor{ { -0.25f, 0.25f, 0.1f }, { 1.0f, 1.0f, 1.0f } },
+				VertexPositionColor{ { -0.25f, 0.25f, 0.1f }, { 1.0f, 1.0f, 1.0f } },
+				VertexPositionColor{ { -0.5f, 0.75f, 0.3f }, { 1.0f, 0.0f, 0.0f } },
+			};
+			m_primitiveRenderer->DrawLines(frameData.m_commandList.Get(), lineVertices.data(), lineVertices.size());
+			m_primitiveRenderer->End();
+		*/
 
 		// Draw IMGUI if initialized 
 		if (m_imguiImpl && !m_headlessMode) {

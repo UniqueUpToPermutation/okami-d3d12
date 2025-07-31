@@ -52,9 +52,8 @@ TEST_F(WorldBenchmark, EntityCreationBenchmark) {
     
     // Benchmark entity creation
     timer.Reset();
-	world->BeginUpdates(*signalHandlers);
     for (int i = 0; i < numEntities; ++i) {
-        entities.push_back(world->CreateEntity());
+        entities.push_back(world->CreateEntity(*signalHandlers));
     }
     double creationTime = timer.ElapsedMilliseconds();
     
@@ -68,9 +67,8 @@ TEST_F(WorldBenchmark, EntityCreationBenchmark) {
     // Benchmark entity removal
     timer.Reset();
     for (entity_t entity : entities) {
-        world->RemoveEntity(entity);
+        world->RemoveEntity(*signalHandlers, entity);
     }
-    world->EndUpdates();
     double removalTime = timer.ElapsedMilliseconds();
     
     std::cout << "Removed " << numEntities << " entities in " 
@@ -91,16 +89,14 @@ TEST_F(WorldBenchmark, HierarchyTraversalBenchmark) {
     std::vector<entity_t> branches;
     std::vector<entity_t> leaves;
     
-	world->BeginUpdates(*signalHandlers);
     for (int i = 0; i < numBranches; ++i) {
-        entity_t branch = world->CreateEntity();
+        entity_t branch = world->CreateEntity(*signalHandlers);
         branches.push_back(branch);
         
         for (int j = 0; j < numLeaves; ++j) {
-            leaves.push_back(world->CreateEntity(branch));
+            leaves.push_back(world->CreateEntity(*signalHandlers, branch));
         }
     }
-    world->EndUpdates();
     
     // Benchmark children iteration
     timer.Reset();
@@ -148,11 +144,9 @@ TEST_F(WorldBenchmark, MemoryUsageBenchmark) {
     std::vector<entity_t> entities;
     entities.reserve(numEntities);
     
-	world->BeginUpdates(*signalHandlers);
     for (int i = 0; i < numEntities; ++i) {
-        entities.push_back(world->CreateEntity());
+        entities.push_back(world->CreateEntity(*signalHandlers));
     }
-    world->EndUpdates();
     
     double creationTime = timer.ElapsedMilliseconds();
     

@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <typeindex>
 #include <typeinfo>
+#include <vector>
 
 #include "entity_tree.hpp"
 
@@ -57,6 +58,25 @@ namespace okami {
 		bool m_active;
 	};
 
+	template <typename T>
+	class IStorageAccessor {
+	public:
+		virtual ~IStorageAccessor() = default;
+		virtual T const* TryGet(entity_t entity) const = 0;
+		inline T const& Get(entity_t entity) const {
+			if (auto ptr = TryGet(entity); ptr) {
+				return *ptr;
+			}
+			throw std::runtime_error("Entity not found in storage");
+		}
+		inline T GetOr(entity_t entity, T const& defaultValue) const {
+			if (auto ptr = TryGet(entity); ptr) {
+				return *ptr;
+			}
+			return defaultValue;
+		}
+	};
+
 	class IInterfaceQueryable {
 	public:
 		~IInterfaceQueryable() = default;
@@ -71,6 +91,11 @@ namespace okami {
 			else {
 				return nullptr;
 			}
+		}
+
+		template <typename T>
+		IStorageAccessor<T>* QueryStorage() const {
+			return Query<IStorageAccessor<T>>();
 		}
 	};
 
@@ -204,7 +229,6 @@ namespace okami {
 		}
 	};
 
-
 	struct Error {
 		std::variant<std::monostate, std::string_view, std::string> m_message;
 
@@ -238,6 +262,9 @@ namespace okami {
 
 	struct ModuleResult {
 		bool m_idle = true;
+		std::vector<Error> m_errors;
+
+		ModuleResult& Union(ModuleResult const& other);
 	};
 
 	struct Time {
@@ -284,19 +311,6 @@ namespace okami {
 		bool m_headlessMode = false;
 		std::string_view m_headlessOutputFileStem = "output";
 		bool m_forceLogToConsole = false;
-	};
-
-	template <typename T>
-	class IStorageAccessor {
-	public:
-		virtual ~IStorageAccessor() = default;
-		virtual T const* TryGet(entity_t entity) const = 0;
-		inline T const& Get(entity_t entity) const {
-			if (auto ptr = TryGet(entity); ptr) {
-				return *ptr;
-			}
-			throw std::runtime_error("Entity not found in storage");
-		}
 	};
 
 	class Engine final {

@@ -83,10 +83,11 @@ namespace okami {
 			(registerForType(TypeWrapper<Ts>{}), ...);
 		}
 
-		std::vector<Error> ProcessSignals() {
+		ModuleResult ProcessSignals() {
 			std::vector<Error> errors;
+			bool hasSignals = false;
 
-			auto processForType = [this, &errors](auto typeWrapper) {
+			auto processForType = [this, &errors, &hasSignals](auto typeWrapper) {
 				using T = typename decltype(typeWrapper)::Type;
 
 				// Process add signals
@@ -107,6 +108,7 @@ namespace okami {
 							callback(signal.m_entity, resultIt->second);
 						}
 					}
+					hasSignals = true;
 				}
 				// Process update signals
 				auto& updateQueue = std::get<std::queue<ComponentUpdateSignal<T>>>(updateSignals);
@@ -125,6 +127,7 @@ namespace okami {
 							callback(signal.m_entity, signal.m_component, it->second);
 						}
 					}
+					hasSignals = true;
 				}
 				// Process remove signals
 				auto& removeQueue = std::get<std::queue<ComponentRemoveSignal<T>>>(removeSignals);
@@ -145,12 +148,13 @@ namespace okami {
 							callback(signal.m_entity, data);
 						}
 					}
+					hasSignals = true;
 				}
 				};
 
 			(processForType(TypeWrapper<Ts>{}), ...);
 
-			auto processEntityRemovedForType = [this](auto typeWrapper, entity_t e) {
+			auto processEntityRemovedForType = [this, &hasSignals](auto typeWrapper, entity_t e) {
 				using T = typename decltype(typeWrapper)::Type;
 				auto& storage = GetStorage<T>();
 				auto it = storage.find(e);
@@ -160,6 +164,7 @@ namespace okami {
 					}
 					storage.erase(it);
 				}
+				hasSignals = true;
 			};
 
 			while (!entityRemoveSignals.empty()) {
@@ -168,7 +173,10 @@ namespace okami {
 				(processEntityRemovedForType(TypeWrapper<Ts>{}, signal.m_entity), ...);
 			}
 
-			return errors;
+			return ModuleResult{
+				.m_idle = !hasSignals,
+				.m_errors = std::move(errors) 
+			};
 		}
 	};
 

@@ -7,6 +7,12 @@
 
 using namespace okami;
 
+ModuleResult& ModuleResult::Union(ModuleResult const& other) {
+	m_idle = m_idle && other.m_idle;
+	m_errors.insert(m_errors.end(), other.m_errors.begin(), other.m_errors.end());
+	return *this;
+}
+
 Engine::Engine(EngineParams params) : m_params(params) {
 	std::string name;
 	if (m_params.m_argc == 0) {
@@ -111,21 +117,18 @@ void Engine::Run(std::optional<size_t> runFrameCount) {
 
 		// Update frame
 		auto updateFrame = [&]() {
-			m_entityTree.BeginUpdates(m_signalHandlers);
 			for (auto& module : m_modules) {
 				module->OnFrameBegin(time, m_signalHandlers, m_entityTree);
 			}
-			m_entityTree.EndUpdates();
 
-			bool idle;
+			ModuleResult result;
 			do {
-				idle = true;
+				result = {};
 				for (auto& module : m_modules) {
-					auto result = module->HandleSignals(time, m_signalHandlers);
-					idle &= result.m_idle;
+					result.Union(module->HandleSignals(time, m_signalHandlers));
 				}
-			} while (!idle);
-			};
+			} while (!result.m_idle);
+		};
 
 		updateFrame();
 		 

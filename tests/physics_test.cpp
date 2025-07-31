@@ -1,5 +1,7 @@
-#include <gtest/gtest.h>
 #include "../physics.hpp"
+#include "../transform.hpp"
+
+#include <gtest/gtest.h>
 #include <glm/vec3.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -75,10 +77,8 @@ TEST_F(PhysicsModuleTest, TransformStorage) {
 	auto& entityTree = en->GetEntityTree();
     auto& signalBus = en->GetSignalBus();
 
-	entityTree.BeginUpdates(signalBus);
-	entity_t entity1 = entityTree.CreateEntity();
-    entity_t entity2 = entityTree.CreateEntity();
-    entityTree.EndUpdates();
+	entity_t entity1 = entityTree.CreateEntity(signalBus);
+    entity_t entity2 = entityTree.CreateEntity(signalBus);
 
 	signalBus.AddComponent(entity1, Transform(glm::vec3(1.0f, 2.0f, 3.0f)));
 	signalBus.AddComponent(entity2, Transform(glm::vec3(4.0f, 5.0f, 6.0f)));
@@ -101,9 +101,7 @@ TEST_F(PhysicsModuleTest, TransformStorage) {
 
 	EXPECT_THROW(storage->Get(entity2), std::runtime_error);
 
-	entityTree.BeginUpdates(signalBus);
-    entityTree.RemoveEntity(entity1);
-    entityTree.EndUpdates();
+    entityTree.RemoveEntity(signalBus, entity1);
 
     en->Run(1);
 
