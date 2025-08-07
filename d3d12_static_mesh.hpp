@@ -1,25 +1,25 @@
 #pragma once
 
-#include "shaders/common.fxh"
-
-#include "engine.hpp"
-#include <d3d12.h>
-#include <dxgi1_4.h>
-#include <wrl/client.h>
+#include <unordered_map>
+#include <filesystem>
 #include <DirectXTK12/RenderTargetState.h>
-#include <memory>
-#include <expected>
 
+#include "renderer.hpp"
 #include "d3d12_common.hpp"
 #include "storage.hpp"
-#include "renderer.hpp"
-#include "transform.hpp"
 
 namespace okami {
-	using Microsoft::WRL::ComPtr;
+	struct MeshImpl {
+		GPUBuffer m_vertexBuffer;
+		GPUBuffer m_indexBuffer;
+	};
 
-	class TriangleRenderer {
+	class StaticMeshRenderer : public IResourceManager<Mesh> {
 	private:
+		std::unordered_map<std::filesystem::path, resource_id_t> m_meshes;
+		std::unordered_map<resource_id_t, MeshImpl> m_meshesById;
+		Storage<StaticMeshComponent> m_staticMeshStorage;
+
 		struct PerFrameData {
 			ConstantBuffer<hlsl::Globals> m_globalConstants;
 			StructuredBuffer<hlsl::Instance> m_instanceBuffer;
@@ -27,25 +27,19 @@ namespace okami {
 
 		ComPtr<ID3D12RootSignature> m_rootSignature;
 		ComPtr<ID3D12PipelineState> m_pipelineState;
-		Storage<DummyTriangleComponent> m_dummyTriangleStorage;
-
-		std::vector<PerFrameData> m_perFrameData;
-		int m_currentBuffer = 0;
-		
-		static std::expected<ComPtr<ID3D12RootSignature>, Error> CreateRootSignature(ID3D12Device& device);
 
 	public:
-
 		inline void RegisterInterfaces(InterfaceCollection& queryable) {
-			m_dummyTriangleStorage.RegisterInterfaces(queryable);
+			m_staticMeshStorage.RegisterInterfaces(queryable);
+			queryable.Register<IResourceManager<Mesh>>(this);
 		}
 
 		inline void RegisterSignalHandlers(SignalHandlerCollection& signals) {
-			m_dummyTriangleStorage.RegisterSignalHandlers(signals);
+			m_staticMeshStorage.RegisterSignalHandlers(signals);
 		}
 
 		inline ModuleResult ProcessSignals() {
-			return m_dummyTriangleStorage.ProcessSignals();
+			return m_staticMeshStorage.ProcessSignals();
 		}
 
 		Error Startup(
@@ -58,5 +52,8 @@ namespace okami {
 			ID3D12GraphicsCommandList& commandList,
 			hlsl::Globals const& globals,
 			IStorageAccessor<Transform> const& transforms);
+
+		ResHandle<Mesh const> Load(std::string_view path) override;
+		ResHandle<Mesh const> Create(typename Mesh::CreationData&& data) override;
 	};
 }

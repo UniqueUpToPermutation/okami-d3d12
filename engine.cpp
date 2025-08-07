@@ -2,6 +2,7 @@
 #include "config.hpp"
 
 #include <chrono>
+#include <filesystem>
 
 #include <glog/logging.h>
 
@@ -17,7 +18,8 @@ Engine::Engine(EngineParams params) : m_params(params) {
 	std::string name;
 	if (m_params.m_argc == 0) {
 		name = "okami";
-	} else {
+	}
+	else {
 		name = m_params.m_argv[0];
 	}
 	google::InitGoogleLogging(name.c_str());
@@ -128,21 +130,28 @@ void Engine::Run(std::optional<size_t> runFrameCount) {
 					result.Union(module->HandleSignals(time, m_signalHandlers));
 				}
 			} while (!result.m_idle);
-		};
+			};
 
 		updateFrame();
-		 
+
 		// Render frame
 		if (renderer) {
 			renderer->Render();
 		}
 
 		if (m_params.m_headlessMode && renderer) {
-			std::string outputFile = std::string(m_params.m_headlessOutputFileStem) + "_" + std::to_string(frameCount) + ".dds";
+			if (!std::filesystem::exists("renders")) {
+				std::filesystem::create_directory("renders");
+			}
+
+			std::string outputFile = std::string("renders/") +
+				std::string(m_params.m_headlessOutputFileStem) +
+				"_" + std::to_string(frameCount) + ".tga";
 			LOG(INFO) << "Saving headless frame to: " << outputFile;
+
 			renderer->SaveToFile(outputFile);
 		}
-	
+
 		frameCount++;
 		if (maxFrames && frameCount >= *maxFrames) {
 			m_shouldExit.store(true);
@@ -152,3 +161,34 @@ void Engine::Run(std::optional<size_t> runFrameCount) {
 	}
 }
 
+class ScriptModule final : public IEngineModule {
+private:
+	script_t m_func;
+	std::string m_name;
+
+public:
+	void RegisterInterfaces(InterfaceCollection& queryable) override {}
+	void RegisterSignalHandlers(SignalHandlerCollection& handlers) override {}
+
+	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override { return {}; }
+	void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {}
+
+	void OnFrameBegin(Time const& time,
+		ISignalBus& signalBus, EntityTree& entityTree) override {
+		m_func(time, signalBus, entityTree);
+	}
+
+	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {
+		return {};
+	}
+
+	std::string_view GetName() const override { return m_name; }
+
+	ScriptModule(script_t func, std::string const& name) : m_func(std::move(func)) {
+		m_name = std::string("ScriptModule: ") + name;
+	}
+};
+
+void Engine::AddScript(script_t script, std::string const& name) {
+	AddModule<ScriptModule>(std::move(script), name);
+}

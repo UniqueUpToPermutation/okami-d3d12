@@ -55,6 +55,32 @@ namespace okami {
 		}
 
 		inline Transform Inverse() const;
+
+
+		inline static Transform RotateAxis(float angle, glm::vec3 const& axis) {
+			glm::quat rotation = glm::angleAxis(angle, glm::normalize(axis));
+			return Transform(glm::zero<glm::vec3>(), rotation, 1.0f);
+		}
+
+		inline static Transform RotateX(float angle) {
+			return Transform::RotateAxis(angle, glm::vec3(1.0f, 0.0f, 0.0f));
+		}
+
+		inline static Transform RotateY(float angle) {
+			return Transform::RotateAxis(angle, glm::vec3(0.0f, 1.0f, 0.0f));
+		}
+
+		inline static Transform RotateZ(float angle) {
+			return Transform::RotateAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f));
+		}
+
+		inline static Transform Scale(float scale) {
+			return Transform(glm::zero<glm::vec3>(), glm::identity<glm::quat>(), scale);
+		}
+
+		inline static Transform Translate(float x, float y, float z) {
+			return Transform(glm::vec3(x, y, z), glm::identity<glm::quat>(), 1.0f);
+		}
 	};
 
 	inline Transform operator*(Transform const& A, Transform const& B) {
@@ -81,4 +107,7 @@ namespace okami {
 		glm::mat3 scaleShear = (1.0f - t) * A.m_scaleShear + t * B.m_scaleShear;
 		return Transform(position, rotation, scaleShear);
 	}
+
+
+
 }

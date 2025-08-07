@@ -7,6 +7,7 @@
 #include <GLFW/glfw3native.h>
 
 #include <d3d12.h>
+#include <d3d12sdklayers.h>
 #include <directx/d3dx12.h>
 #include <dxgi1_6.h>
 #include <glog/logging.h>
@@ -30,6 +31,8 @@
 #include "d3d12_primitive_renderer.hpp"
 #include "d3d12_imgui.hpp"
 #include "d3d12_triangle.hpp"
+
+#include <glog/logging.h>
 
 // Depth buffer format
 constexpr DXGI_FORMAT kBackbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -71,20 +74,20 @@ struct PerFrameData {
 
 	static std::expected<PerFrameData, Error> Create(
 		ID3D12Device* device,
-		int bufferIndex,
+		int m_bufferIndex,
 		IDXGISwapChain3* swapChain,
 		DirectX::DescriptorHeap& rtvHeap) {
 		PerFrameData frameData;
 
 		// 1. Get the back buffer from the swap chain
 		ComPtr<ID3D12Resource> renderTarget;
-		HRESULT hr = swapChain->GetBuffer(bufferIndex, IID_PPV_ARGS(renderTarget.GetAddressOf()));
+		HRESULT hr = swapChain->GetBuffer(m_bufferIndex, IID_PPV_ARGS(renderTarget.GetAddressOf()));
 		if (FAILED(hr) || !renderTarget) {
 			return std::unexpected(Error("Failed to get swap chain buffer for render target"));
 		}
 
 		// 2. Create RTV for the back buffer
-		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap.GetCpuHandle(bufferIndex);
+		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap.GetCpuHandle(m_bufferIndex);
 		device->CreateRenderTargetView(renderTarget.Get(), nullptr, rtvHandle);
 
 		frameData.m_renderTarget = renderTarget;
@@ -117,7 +120,7 @@ struct PerFrameData {
 	// Overload for headless mode - creates offscreen render target
 	static std::expected<PerFrameData, Error> CreateOffscreen(
 		ID3D12Device* device,
-		int bufferIndex,
+		int m_bufferIndex,
 		int width,
 		int height,
 		DirectX::DescriptorHeap& rtvHeap) {
@@ -143,7 +146,7 @@ struct PerFrameData {
 		}
 
 		// 2. Create RTV for the render target
-		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap.GetCpuHandle(bufferIndex);
+		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap.GetCpuHandle(m_bufferIndex);
 		device->CreateRenderTargetView(frameData.m_renderTarget.Get(), nullptr, rtvHandle);
 
 		// 3. Create command allocator for this frame
@@ -212,7 +215,9 @@ private:
 
 	TriangleRenderer m_triangleRenderer;
 
-	IStorageAccessor<Transform>* m_transforms;
+	IStorageAccessor<Transform>* m_transforms = nullptr;
+	Storage<Camera> m_storage;
+	entity_t m_activeCamera = kNullEntity;
 
 public:
 	RendererModule(bool headless = false) :
@@ -239,10 +244,12 @@ public:
 
 		RegisterConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
 
+		m_storage.RegisterInterfaces(queryable);
 		m_triangleRenderer.RegisterInterfaces(queryable);
 	}
 
 	void RegisterSignalHandlers(SignalHandlerCollection& signals) override {
+		m_storage.RegisterSignalHandlers(signals);
 		m_triangleRenderer.RegisterSignalHandlers(signals);
 	}
 
@@ -586,8 +593,34 @@ public:
 	}
 
 	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {
-		// No specific signals to handle in this module
-		return m_triangleRenderer.ProcessSignals();
+		ModuleResult result;
+		result.Union(m_storage.ProcessSignals());
+		result.Union(m_triangleRenderer.ProcessSignals());
+		return result;
+	}
+
+	std::pair<std::optional<Camera>, Transform> GetActiveCameraAndTransform() const {
+		auto const& storage = m_storage.GetStorage<Camera>();
+		
+		if (m_activeCamera == kNullEntity) {
+			LOG_FIRST_N(WARNING, 1) << "Active camera entity not set! Using first camera!";
+
+			if (storage.begin() == storage.end()) {
+				LOG_FIRST_N(WARNING, 1) << "No cameras found in storage!";
+				return { {}, {} };
+			}
+			else {
+				return { storage.begin()->second, m_transforms->GetOr(storage.begin()->first, Transform::Identity()) };
+			}
+		}
+		auto cameraIt = storage.find(m_activeCamera);
+		if (cameraIt == storage.end()) {
+			LOG_FIRST_N(WARNING, 1) << "Active camera entity not found: " << m_activeCamera;
+			return { {}, {} };
+		}
+		else {
+			return { cameraIt->second, m_transforms->GetOr(m_activeCamera, Transform::Identity()) };
+		}
 	}
 
 	void Render() override {
@@ -660,41 +693,18 @@ public:
 		frameData.m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		frameData.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
+		// Get the active camera
+		auto [camera, transform] = GetActiveCameraAndTransform();
+		hlsl::Globals globals{
+			.m_camera = ToHLSLCamera(camera, transform, m_config.backbufferWidth, m_config.backbufferHeight)
+		};
+
 		m_triangleRenderer.Render(
 			*m_d3d12Device.Get(),
 			*frameData.m_commandList.Get(),
-			CameraInfo{
-				.m_viewMatrix = glm::identity<glm::mat4>(),
-				.m_projectionMatrix = glm::identity<glm::mat4>(),
-			},
+			globals,
 			*m_transforms
 		);
-		
-		/*
-			m_primitiveRenderer->BeginTriangles(frameData.m_commandList.Get());
-
-			// Triangle with varying Z values to test depth
-			std::array<VertexPositionColor, 3> triangleVertices = {
-				VertexPositionColor{ { 0.5f, 0.75f, 0.5f }, { 1.0f, 1.0f, 0.0f } },
-				VertexPositionColor{ { 0.75f, 0.25f, 0.0f }, { 0.0f, 1.0f, 1.0f } },
-				VertexPositionColor{ { 0.25f, 0.25f, 0.8f }, { 1.0f, 0.0f, 1.0f } }
-			};
-			m_primitiveRenderer->DrawTriangles(frameData.m_commandList.Get(), triangleVertices.data(), triangleVertices.size());
-			m_primitiveRenderer->End();
-
-			m_primitiveRenderer->BeginLines(frameData.m_commandList.Get());
-			// Line strip with varying Z values
-			std::array<VertexPositionColor, 6> lineVertices = {
-				VertexPositionColor{ { -0.5f, 0.75f, 0.3f }, { 1.0f, 0.0f, 0.0f } },
-				VertexPositionColor{ { -0.75f, 0.25f, 0.6f }, { 0.0f, 1.0f, 1.0f } },
-				VertexPositionColor{ { -0.75f, 0.25f, 0.6f }, { 0.0f, 1.0f, 1.0f } },
-				VertexPositionColor{ { -0.25f, 0.25f, 0.1f }, { 1.0f, 1.0f, 1.0f } },
-				VertexPositionColor{ { -0.25f, 0.25f, 0.1f }, { 1.0f, 1.0f, 1.0f } },
-				VertexPositionColor{ { -0.5f, 0.75f, 0.3f }, { 1.0f, 0.0f, 0.0f } },
-			};
-			m_primitiveRenderer->DrawLines(frameData.m_commandList.Get(), lineVertices.data(), lineVertices.size());
-			m_primitiveRenderer->End();
-		*/
 
 		// Draw IMGUI if initialized 
 		if (m_imguiImpl && !m_headlessMode) {
@@ -817,9 +827,8 @@ public:
 
 		// Save to file using DirectXTex
 		std::wstring wFilename(filename.begin(), filename.end());
-
-		DirectX::SaveToDDSFile(image, DirectX::DDS_FLAGS_NONE, wFilename.c_str());
-
+		DirectX::SaveToTGAFile(image, wFilename.c_str());
+		
 		if (FAILED(hr)) {
 			LOG(ERROR) << "Failed to save image to file: " << filename;
 		}
@@ -841,6 +850,17 @@ public:
 
 	std::string_view GetName() const override {
 		return "D3D12 Renderer";
+	}
+
+	void SetActiveCamera(entity_t e) override {
+		m_activeCamera = e;
+		if (m_storage.GetStorage<Camera>().find(e) == m_storage.GetStorage<Camera>().end()) {
+			LOG(WARNING) << "Entity " << e << " is not a valid camera";
+		}
+	}
+
+	entity_t GetActiveCamera() const override {
+		return m_activeCamera;
 	}
 };
 

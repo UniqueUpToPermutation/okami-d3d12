@@ -12,12 +12,12 @@
       "features": [ "dx12-binding", "glfw-binding" ]
     },
     "tinygltf",
-    "treehh",
     "yaml-cpp",
     "glm",
     {
       "name": "directxtex",
       "features": [ "dx12" ]
-    }
+    },
+    "concurrentqueue"
   ]
 }

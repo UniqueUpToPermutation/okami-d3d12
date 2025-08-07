@@ -4,7 +4,7 @@
 #include <vector>
 #include <set>
 
-#include "assert.hpp"
+#include "common.hpp"
 
 namespace okami {
 	template <typename T, typename IndexT = int>

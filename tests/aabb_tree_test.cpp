@@ -230,9 +230,9 @@ TEST_F(AABBTreeTest, RandomInsertRemoveTest) {
             float x = posDist(rng);
             float y = posDist(rng);
             float z = posDist(rng);
-            float size = sizeDist(rng);
+            float m_size = sizeDist(rng);
             
-            AABB box = CreateAABB(x, y, z, x + size, y + size, z + size);
+            AABB box = CreateAABB(x, y, z, x + m_size, y + m_size, z + m_size);
             int nodeIndex = tree->Insert(box, i);
             activeNodes.push_back(nodeIndex);
         } else {
@@ -252,8 +252,8 @@ TEST_F(AABBTreeTest, RandomInsertRemoveTest) {
 struct LinearCostFunction {
     inline float operator()(const AABB& aabb) const {
         // Simple linear cost based on diagonal length
-        glm::vec3 size = aabb.m_max - aabb.m_min;
-        return size.x + size.y + size.z;
+        glm::vec3 m_size = aabb.m_max - aabb.m_min;
+        return m_size.x + m_size.y + m_size.z;
     }
 };
 

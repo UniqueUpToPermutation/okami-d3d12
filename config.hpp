@@ -3,6 +3,8 @@
 #include "engine.hpp"
 #include <type_traits>
 #include <concepts>
+#include <iostream>
+#include <functional>
 
 #define OKAMI_CONFIG(TypeName) \
     constexpr std::string_view Name() const { \

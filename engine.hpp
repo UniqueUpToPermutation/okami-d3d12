@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <any>
 #include <optional>
 #include <variant>
@@ -11,53 +10,15 @@
 #include <typeindex>
 #include <typeinfo>
 #include <vector>
+#include <expected>
+#include <string>
+#include <filesystem>
+#include <atomic>
 
 #include "entity_tree.hpp"
-
-#define OKAMI_DEFER(x) auto OKAMI_DEFER_##__LINE__ = okami::ScopeGuard([&]() { x; })
+#include "common.hpp"
 
 namespace okami {
-	template <typename T>
-	struct TypeWrapper {
-		using Type = T;
-	};
-
-	class ScopeGuard {
-	public:
-		inline explicit ScopeGuard(std::function<void()> onExitScope)
-			: m_onExitScope(std::move(onExitScope)), m_active(true) {
-		}
-
-		inline ScopeGuard(ScopeGuard&& other) noexcept
-			: m_onExitScope(std::move(other.m_onExitScope)), m_active(other.m_active) {
-			other.m_active = false;
-		}
-
-		inline ScopeGuard& operator=(ScopeGuard&& other) noexcept {
-			if (this != &other) {
-				if (m_active && m_onExitScope) m_onExitScope();
-				m_onExitScope = std::move(other.m_onExitScope);
-				m_active = other.m_active;
-				other.m_active = false;
-			}
-			return *this;
-		}
-
-		inline ~ScopeGuard() {
-			if (m_active && m_onExitScope) m_onExitScope();
-		}
-
-		// Prevent copy
-		ScopeGuard(const ScopeGuard&) = delete;
-		ScopeGuard& operator=(const ScopeGuard&) = delete;
-
-		inline void Dismiss() noexcept { m_active = false; }
-
-	private:
-		std::function<void()> m_onExitScope;
-		bool m_active;
-	};
-
 	template <typename T>
 	class IStorageAccessor {
 	public:
@@ -229,37 +190,6 @@ namespace okami {
 		}
 	};
 
-	struct Error {
-		std::variant<std::monostate, std::string_view, std::string> m_message;
-
-		Error() : m_message(std::monostate{}) {}
-		Error(const std::string& msg) : m_message(msg) {}
-		Error(const char* msg) : m_message(std::string_view{ msg }) {}
-
-		inline bool IsOk() const {
-			return std::holds_alternative<std::monostate>(m_message);
-		}
-
-		inline bool IsError() const {
-			return !IsOk();
-		}
-
-		friend std::ostream& operator<<(std::ostream& os, const Error& err) {
-			os << err.Str();
-			return os;
-		}
-
-		inline std::string Str() const {
-			if (std::holds_alternative<std::string_view>(m_message)) {
-				return std::string(std::get<std::string_view>(m_message));
-			}
-			else if (std::holds_alternative<std::string>(m_message)) {
-				return std::get<std::string>(m_message);
-			}
-			return "No error message";
-		}
-	};
-
 	struct ModuleResult {
 		bool m_idle = true;
 		std::vector<Error> m_errors;
@@ -300,6 +230,9 @@ namespace okami {
 		virtual void Render() = 0;
 		virtual void SaveToFile(const std::string& filename) = 0;
 		virtual void SetHeadlessMode(bool headless) = 0;
+
+		virtual void SetActiveCamera(entity_t e) = 0;
+		virtual entity_t GetActiveCamera() const = 0;
 	};
 
 	struct SignalExit {};
@@ -311,6 +244,56 @@ namespace okami {
 		bool m_headlessMode = false;
 		std::string_view m_headlessOutputFileStem = "output";
 		bool m_forceLogToConsole = false;
+	};
+
+	using script_t = std::function<void(
+		Time const& time,
+		ISignalBus& signalBus,
+		EntityTree& entityTree)>;
+
+	using resource_id_t = int64_t;
+
+	constexpr resource_id_t kInvalidResource = -1;
+
+	template <typename T>
+	concept ResourceType = requires {
+		typename T::CreationData;
+	};
+
+	template <ResourceType T>
+	struct Resource;
+
+	template <ResourceType T>
+	class IResourceHandler {
+	public:
+		virtual ~IResourceHandler() = default;
+		virtual void ResourceLost(Resource<T>& resource) = 0;
+	};
+
+	template <ResourceType T>
+	struct Resource {
+		T m_data;
+		resource_id_t m_id = kInvalidResource;
+		std::string m_path;
+		std::atomic<bool> m_loaded{ false };
+		IResourceHandler<T>* m_handler{ nullptr };
+	};
+
+	template <ResourceType T>
+	using ResHandle = std::shared_ptr<Resource<T>>;
+
+	template <ResourceType T>
+	class IResourceManager {
+	public:
+		virtual ResHandle<T const> Load(std::string_view path) = 0;
+		virtual ResHandle<T const> Create(typename T::CreationData&& data) = 0;
+
+		inline ResHandle<T const> Load(std::string const& path) {
+			return Load(std::string_view(path));
+		}
+		inline ResHandle<T const> Load(std::filesystem::path const& path) {
+			return Load(path.string());
+		}
 	};
 
 	class Engine final {
@@ -341,7 +324,7 @@ namespace okami {
 		void Run(std::optional<size_t> frameCount = std::nullopt);
 		void Shutdown();
 
-		EntityTree& GetEntityTree() {
+		inline EntityTree& GetEntityTree() {
 			return m_entityTree;
 		}
 
@@ -353,6 +336,43 @@ namespace okami {
 		IStorageAccessor<T>* GetStorageAccessor() {
 			return m_interfaces.Query<IStorageAccessor<T>>();
 		}
+
+		inline entity_t CreateEntity(entity_t parent = kRoot) {
+			return m_entityTree.CreateEntity(m_signalHandlers, parent);
+		}
+
+		inline void RemoveEntity(entity_t entity) {
+			m_entityTree.RemoveEntity(m_signalHandlers, entity);
+		}
+
+		inline void SetParent(entity_t entity, entity_t parent = kRoot) {
+			m_entityTree.SetParent(m_signalHandlers, entity, parent);
+		}
+
+		template <typename T>
+		void AddComponent(entity_t entity, T component) {
+			m_signalHandlers.AddComponent(entity, std::move(component));
+		}
+
+		template <typename T>
+		void UpdateComponent(entity_t entity, T component) {
+			m_signalHandlers.UpdateComponent(entity, std::move(component));
+		}
+
+		template <typename T>
+		void RemoveComponent(entity_t entity) {
+			m_signalHandlers.RemoveComponent<T>(entity);
+		}
+
+		template <ResourceType T>
+		IResourceManager<T>* GetResourceManager() {
+			return m_interfaces.Query<IResourceManager<T>>();
+		}
+
+		/*
+			Used for prototyping and scripting. Run a function every frame.
+		*/
+		void AddScript(script_t script, const std::string& name = "Unnamed");
 
 		Engine(EngineParams params = {});
 		~Engine();

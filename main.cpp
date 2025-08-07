@@ -1,31 +1,30 @@
+#include <tiny_gltf.h>
+
 #include "engine.hpp"
+#include "camera.hpp"
 #include "renderer.hpp"
 #include "transform.hpp"
-
-#include <windows.h>
+#include "paths.hpp"
 
 using namespace okami;
 
-int main(int argc, char const* argv[]) {
-	Engine engine{EngineParams{
-		.m_argc = argc,
-		.m_argv = argv,
-	}};
-	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+#include <fstream>  
 
-	if (auto err = engine.Startup(); err.IsError()) {
-		std::cerr << "Engine startup failed: " << err << std::endl;
-	}
+int main(int argc, char const* argv[]) {  
+    Engine engine{ EngineParams{  
+        .m_argc = argc,  
+        .m_argv = argv,  
+    } };  
+    engine.AddModuleFromFactory<D3D12RendererModuleFactory>();  
 
-	auto& world = engine.GetEntityTree();
-	auto& signalBus = engine.GetSignalBus();
+    if (auto err = engine.Startup(); err.IsError()) {  
+        std::cerr << "Engine startup failed: " << err << std::endl;  
+    }
 
-	// Create the world
-	auto triangle = world.CreateEntity(signalBus);
-	signalBus.AddComponent(triangle, DummyTriangleComponent{});
-	signalBus.AddComponent(triangle, Transform(glm::vec3(0.0f, 0.0f, 0.0f)));
+	auto meshLoader = engine.GetResourceManager<Mesh>();
+	auto box = meshLoader->Load(GetAssetsPath() / "assets" / "box.glb");
 
-	engine.Run();
+    engine.Run();  
 
-	return 0;
+    return 0;  
 }

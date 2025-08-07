@@ -1,5 +1,5 @@
 #include "d3d12_triangle.hpp"
-#include "assets.hpp"
+#include "paths.hpp"
 #include <d3d12.h>
 #include <d3dcompiler.h>
 #include <directx/d3dx12.h>
@@ -9,16 +9,18 @@
 
 #include "d3d12_common.hpp"
 
+#include <glog/logging.h>
+
 using namespace okami;
 
 std::expected<ComPtr<ID3D12RootSignature>, Error> TriangleRenderer::CreateRootSignature(ID3D12Device& device) {
     ComPtr<ID3D12RootSignature> rootSignature;
 
-    // Create root parameters for constant buffers
+    // Create root parameters: constant buffer for globals, shader resource view for structured buffer
     CD3DX12_ROOT_PARAMETER1 rootParameters[2];
     
     rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_VERTEX);
-    rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_VERTEX);
+    rootParameters[1].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_VERTEX);
 
     // Create root signature description
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
@@ -47,14 +49,15 @@ Error TriangleRenderer::Startup(
     ID3D12Device& device,
     DirectX::RenderTargetState rts,
     int bufferCount) {
+
     // Load vertex shader
-    auto vertexShader = LoadShaderFromFile("triangle_vs.cso");
+    auto vertexShader = LoadShaderFromFile(GetShaderPath("triangle_vs.cso"));
     if (!vertexShader) {
         return vertexShader.error();
     }
 
     // Load pixel shader
-	auto pixelShader = LoadShaderFromFile("triangle_ps.cso");
+	auto pixelShader = LoadShaderFromFile(GetShaderPath("triangle_ps.cso"));
     if (!pixelShader) {
         return pixelShader.error();
     }
@@ -93,18 +96,20 @@ Error TriangleRenderer::Startup(
     }
 
     for (int i = 0; i < bufferCount; ++i) {
-        auto shaderConstants = ShaderConstants<hlsl::Globals>::Create(device, 1);
+        auto shaderConstants = ConstantBuffer<hlsl::Globals>::Create(device);
         if (!shaderConstants) {
             return shaderConstants.error();
         }
-		auto instanceConstants = ShaderConstants<hlsl::Instance>::Create(device, 1);
-        if (!instanceConstants) {
-            return instanceConstants.error();
+        // Start with an empty structued buffer, because this renderer
+		// will probably not be used
+		auto instanceBuffer = StructuredBuffer<hlsl::Instance>::Create(device, 0);
+        if (!instanceBuffer) {
+            return instanceBuffer.error();
 		}
 
         m_perFrameData.emplace_back(PerFrameData{
 			.m_globalConstants = std::move(shaderConstants.value()),
-			.m_instanceConstants = std::move(instanceConstants.value())
+			.m_instanceBuffer = std::move(instanceBuffer.value())
         });
 	}
 
@@ -114,8 +119,14 @@ Error TriangleRenderer::Startup(
 Error TriangleRenderer::Render(
     ID3D12Device& device,
     ID3D12GraphicsCommandList& commandList,
-    CameraInfo const& camera,
+    hlsl::Globals const& globals,
     IStorageAccessor<Transform> const& transforms) {
+    auto dummyTriangles = m_dummyTriangleStorage.GetStorage<DummyTriangleComponent>();
+
+    if (dummyTriangles.empty()) {
+        return {};
+	}
+
     // Set the pipeline state
     commandList.SetPipelineState(m_pipelineState.Get());
 
@@ -124,52 +135,49 @@ Error TriangleRenderer::Render(
 
     // Set primitive topology
     commandList.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    
-    auto dummyTriangles = m_dummyTriangleStorage.GetStorage<DummyTriangleComponent>();
 
-    // Set constant buffer views
+    // Set constant buffer views for globals
     {
         auto& globalConstants = m_perFrameData[m_currentBuffer].m_globalConstants;
         auto map = globalConstants.Map();
         if (!map) {
             return Error("Failed to map global constants");
 		}
-        **map = hlsl::Globals{
-            .viewMatrix = camera.m_viewMatrix,
-            .projectionMatrix = camera.m_projectionMatrix,
-            .viewProjectionMatrix = camera.m_projectionMatrix * camera.m_viewMatrix
-        };
+        **map = globals;
         commandList.SetGraphicsRootConstantBufferView(0, globalConstants.GetGPUAddress());
     }
 
-	// Resize if necessary to render all triangles
-
-	auto instanceConstants = m_perFrameData[m_currentBuffer].m_instanceConstants;
-    if (instanceConstants.Reserve(device, dummyTriangles.size()).IsError()) {
-		return Error("Failed to reserve shader constants for dummy triangles");
+	// Resize structured buffer if necessary to fit all triangles
+	auto& instanceBuffer = m_perFrameData[m_currentBuffer].m_instanceBuffer;
+    if (instanceBuffer.Reserve(device, dummyTriangles.size()).IsError()) {
+		return Error("Failed to reserve structured buffer for dummy triangles");
     }
 
-    auto map = instanceConstants.Map();
+    // Map and fill instance data
+    auto map = instanceBuffer.Map();
     if (!map) {
-        return Error("Failed to map shader constants");
+        return Error("Failed to map structured buffer");
 	}
 
-    // Set globals
+    // Fill instance data for all triangles
     int index = 0;
     for (auto const& [entity, triangle] : dummyTriangles) {
         // Assuming each triangle has a transform component
         auto transform = transforms.GetOr(entity, Transform::Identity());
 
+        auto worldMatrix = transform.AsMatrix();
+
         // Set instance data
         map->operator[](index) = hlsl::Instance{
-            .worldMatrix = transform.AsMatrix()
+            .m_worldMatrix = worldMatrix,
+            .m_worldInverseTransposeMatrix = glm::inverse(glm::transpose(worldMatrix))
         };
-
-        // Draw the triangle (3 vertices, generated in vertex shader)
-        commandList.SetGraphicsRootConstantBufferView(1, instanceConstants.GetGPUAddress());
-        commandList.DrawInstanced(3, 1, 0, 0);
         ++index;
 	}
+
+    // Set structured buffer and draw all instances in one call
+    commandList.SetGraphicsRootShaderResourceView(1, instanceBuffer.GetGPUAddress());
+    commandList.DrawInstanced(3, static_cast<UINT>(dummyTriangles.size()), 0, 0);
 
     m_currentBuffer = (m_currentBuffer + 1) % m_perFrameData.size();
 

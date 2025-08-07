@@ -1,12 +1,22 @@
 #pragma once
 
-#include <glm/mat4x4.hpp>
+#include <stdexcept>
+#include <atomic>
+#include <memory>
+
+#include "engine.hpp"
+#include "geometry.hpp"
 
 namespace okami {
 	struct DummyTriangleComponent {};
 
-	struct CameraInfo {
-		glm::mat4 m_viewMatrix;
-		glm::mat4 m_projectionMatrix;
+	struct Mesh {
+		using CreationData = Geometry;
+	};
+
+	using MeshHandle = ResHandle<Mesh>;
+
+	struct StaticMeshComponent {
+		MeshHandle m_mesh;
 	};
 }

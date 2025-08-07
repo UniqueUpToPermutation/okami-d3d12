@@ -31,6 +31,10 @@ find_package(yaml-cpp CONFIG REQUIRED)
 find_package(directx-headers CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
+find_package(unofficial-concurrentqueue CONFIG REQUIRED)
+
+# TinyGLTF is header-only and doesn't provide CMake config
+find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
 
 # Automatically add all .cpp and .hpp files in the project directory
 file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
@@ -177,6 +181,9 @@ target_link_libraries(Engine PRIVATE
     Microsoft::DirectXTex
 )
 
+# Add TinyGLTF include directory
+target_include_directories(Engine PRIVATE ${TINYGLTF_INCLUDE_DIRS})
+
 #==============================================================================
 # Test Executable
 #==============================================================================
@@ -198,11 +205,13 @@ target_link_libraries(EngineLib PUBLIC
     glog::glog
     yaml-cpp::yaml-cpp
     d3dcompiler
-    Microsoft::DirectXTex
+    Microsoft::DirectXTex  
+    unofficial::concurrentqueue::concurrentqueue
 )
 
 # Set include directories for the library
 target_include_directories(EngineLib PUBLIC ${CMAKE_SOURCE_DIR})
+target_include_directories(EngineLib PRIVATE ${TINYGLTF_INCLUDE_DIRS})
 
 # Find all test source files
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")
