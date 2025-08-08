@@ -12,7 +12,7 @@ struct VSInput
     float3 position : POSITION;
     float2 uv : TEXCOORD;
     float3 normal : NORMAL;
-    float3 tangent : TANGENT;
+    float4 tangent : TANGENT;
     uint instanceID : SV_InstanceID;
 };
 
@@ -42,15 +42,15 @@ PSInput VSMain(VSInput input)
     result.uv = input.uv;
 
     // Compute normal, tangent, and bitangent
-    float3 normal = mul(worldInverseTransposeMatrix, float4(input.normal, 0.0)).xyz;
-    float3 tangent = mul(worldMatrix, float4(input.tangent, 0.0)).xyz;
-    normal = normalize(normal);
-    tangent = normalize(tangent);
-    float3 bitangent = cross(normal, tangent);
+    float3 worldNormal = mul(worldInverseTransposeMatrix, float4(input.normal, 0.0)).xyz;
+    float3 worldTangent = mul(worldMatrix, float4(input.tangent.xyz, 0.0)).xyz;
+    worldNormal = normalize(worldNormal);
+    worldTangent = normalize(worldTangent);
+    float3 worldBitangent = cross(worldNormal, worldTangent) * input.tangent.w;
     
-    result.normal = normal;
-    result.tangent = tangent;
-    result.bitangent = bitangent;
+    result.normal = worldNormal;
+    result.tangent = worldTangent;
+    result.bitangent = worldBitangent;
 
     return result;
 }

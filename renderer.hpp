@@ -12,6 +12,8 @@ namespace okami {
 
 	struct Mesh {
 		using CreationData = Geometry;
+
+		
 	};
 
 	struct StaticMeshComponent {
