@@ -18,6 +18,7 @@
 
 #include "camera.hpp"
 #include "transform.hpp"
+#include "geometry.hpp"
 
 namespace okami {
 	using Microsoft::WRL::ComPtr;
@@ -57,6 +58,10 @@ namespace okami {
 		}
 
 		InstanceType& operator[](size_t i) {
+			return m_instanceData[i];
+		}
+
+		InstanceType& At(size_t i) {
 			return m_instanceData[i];
 		}
 
@@ -299,16 +304,16 @@ namespace okami {
 		int backbufferWidth,
 		int backbufferHeight);
 
-	class GPUBuffer {
+	class GpuBuffer {
 	private:
 		ComPtr<ID3D12Resource> m_buffer;
 
 	public:
-		GPUBuffer() = default;
-		inline GPUBuffer(ComPtr<ID3D12Resource> buffer)
+		GpuBuffer() = default;
+		inline GpuBuffer(ComPtr<ID3D12Resource> buffer)
 			: m_buffer(std::move(buffer)) {}
 
-		static Expected<GPUBuffer> Create(
+		static Expected<GpuBuffer> Create(
 			ID3D12Device& device,
 			size_t bufferSize);
 
@@ -320,4 +325,7 @@ namespace okami {
 			return m_buffer.Get();
 		}
 	};
+
+	std::vector<Attribute> GetVertexAttributes(std::span<D3D12_INPUT_ELEMENT_DESC const> inputElements);
+	size_t GetFormatSize(DXGI_FORMAT format);
 }

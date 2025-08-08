@@ -32,7 +32,7 @@ namespace okami {
 		std::vector<PerFrameData> m_perFrameData;
 		int m_currentBuffer = 0;
 		
-		static std::expected<ComPtr<ID3D12RootSignature>, Error> CreateRootSignature(ID3D12Device& device);
+		static Expected<ComPtr<ID3D12RootSignature>> CreateRootSignature(ID3D12Device& device);
 
 	public:
 
@@ -52,6 +52,8 @@ namespace okami {
 			ID3D12Device& device,
 			DirectX::RenderTargetState rts,
 			int bufferCount);
+
+		void Shutdown();
 
 		Error Render(
 			ID3D12Device& device,

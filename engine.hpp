@@ -264,34 +264,87 @@ namespace okami {
 	struct Resource;
 
 	template <ResourceType T>
-	class IResourceHandler {
-	public:
-		virtual ~IResourceHandler() = default;
-		virtual void ResourceLost(Resource<T>& resource) = 0;
-	};
-
-	template <ResourceType T>
 	struct Resource {
 		T m_data;
 		resource_id_t m_id = kInvalidResource;
 		std::string m_path;
 		std::atomic<bool> m_loaded{ false };
-		IResourceHandler<T>* m_handler{ nullptr };
+		std::atomic<int> m_refCount{ 0 };
 	};
 
 	template <ResourceType T>
-	using ResHandle = std::shared_ptr<Resource<T>>;
+	struct ResHandle {
+	private:
+		Resource<T>* m_resource = nullptr;
+
+	public:
+		inline ResHandle() = default;
+		inline ResHandle(Resource<T>* resource) : m_resource(resource) {
+			if (m_resource) {
+				m_resource->m_refCount.fetch_add(1, std::memory_order_relaxed);
+			}
+		}
+		inline ResHandle(const ResHandle& other) : m_resource(other.m_resource) {
+			if (m_resource) {
+				m_resource->m_refCount.fetch_add(1, std::memory_order_relaxed);
+			}
+		}
+		inline ResHandle& operator=(const ResHandle& other) {
+			if (this != &other) {
+				if (m_resource) {
+					m_resource->m_refCount.fetch_sub(1, std::memory_order_relaxed);
+				}
+				m_resource = other.m_resource;
+				if (m_resource) {
+					m_resource->m_refCount.fetch_add(1, std::memory_order_relaxed);
+				}
+			}
+			return *this;
+		}
+		inline ~ResHandle() {
+			if (m_resource) {
+				m_resource->m_refCount.fetch_sub(1, std::memory_order_relaxed);
+			}
+		}
+		T const& operator*() const {
+			if (!m_resource || !m_resource->m_loaded.load(std::memory_order_acquire)) {
+				throw std::runtime_error("Resource not loaded");
+			}
+			return m_resource->m_data;
+		}
+		T const* operator->() const {
+			if (!m_resource || !m_resource->m_loaded.load(std::memory_order_acquire)) {
+				throw std::runtime_error("Resource not loaded");
+			}
+			return &m_resource->m_data;
+		}
+		inline T const& Get() const {
+			return m_resource->m_data;
+		}
+		inline bool IsValid() const {
+			return m_resource && m_resource->m_loaded.load(std::memory_order_acquire);
+		}
+		inline resource_id_t GetId() const {
+			return m_resource ? m_resource->m_id : kInvalidResource;
+		}
+		inline std::string_view GetPath() const {
+			return m_resource ? m_resource->m_path : std::string_view();
+		}
+		inline operator bool() const {
+			return IsValid();
+		}
+	};
 
 	template <ResourceType T>
 	class IResourceManager {
 	public:
-		virtual ResHandle<T const> Load(std::string_view path) = 0;
-		virtual ResHandle<T const> Create(typename T::CreationData&& data) = 0;
+		virtual ResHandle<T> Load(std::string_view path) = 0;
+		virtual ResHandle<T> Create(typename T::CreationData&& data) = 0;
 
-		inline ResHandle<T const> Load(std::string const& path) {
+		inline ResHandle<T> Load(std::string const& path) {
 			return Load(std::string_view(path));
 		}
-		inline ResHandle<T const> Load(std::filesystem::path const& path) {
+		inline ResHandle<T> Load(std::filesystem::path const& path) {
 			return Load(path.string());
 		}
 	};

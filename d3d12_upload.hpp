@@ -16,10 +16,10 @@ namespace okami {
 
     public:
         // Called on I/O thread
-        virtual Error Execute(ID3D12GraphicsCommandList& commandList) = 0;
+        virtual Error Execute(ID3D12Device& device, ID3D12GraphicsCommandList& commandList) = 0;
         
         // Called on main thread after task has completed uploading to GPU
-        virtual void Finalize() = 0;
+        virtual Error Finalize() = 0;
 
         virtual ~GpuUploaderTask() = default;
 

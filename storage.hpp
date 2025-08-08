@@ -34,6 +34,13 @@ namespace okami {
 
 		std::tuple<std::unordered_map<entity_t, Ts>...> data;
 
+		Storage() = default;
+
+		// Disable copy and move operations
+		// Move must be disabled to prevent dangling pointers in accessors
+		OKAMI_NO_COPY(Storage);
+		OKAMI_NO_MOVE(Storage);
+
 		template <typename T>
 		std::unordered_map<entity_t, T>& GetStorage() {
 			return std::get<std::unordered_map<entity_t, T>>(data);
@@ -79,7 +86,7 @@ namespace okami {
 			auto registerForType = [this, &queryable](auto typeWrapper) {
 				using T = typename decltype(typeWrapper)::Type;
 				queryable.Register<IStorageAccessor<T>>(&std::get<StorageAccessor<T, Ts...>>(accessors));
-				};
+			};
 			(registerForType(TypeWrapper<Ts>{}), ...);
 		}
 
@@ -177,6 +184,14 @@ namespace okami {
 				.m_idle = !hasSignals,
 				.m_errors = std::move(errors) 
 			};
+		}
+
+		void Clear() {
+			auto clearForType = [this](auto typeWrapper) {
+				using T = typename decltype(typeWrapper)::Type;
+				GetStorage<T>().clear();
+			};
+			(clearForType(TypeWrapper<Ts>{}), ...);
 		}
 	};
 

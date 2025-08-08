@@ -29,6 +29,8 @@ namespace okami {
 		size_t m_stride; // Stride in bytes
 	};
 
+	bool FormatsEqual(std::span<Attribute const> a, std::span<Attribute const> b);
+
 	template <typename T>
 	class GeometryView {
 	private:
@@ -63,6 +65,10 @@ namespace okami {
 		std::optional<std::vector<index_t>> m_indexBuffer;
 
 	public:
+		Geometry() = default;
+		OKAMI_NO_COPY(Geometry);
+		OKAMI_MOVE(Geometry);
+
 		std::span<Attribute const> GetAttributes() const {
 			return m_attributes;
 		}
@@ -129,12 +135,18 @@ namespace okami {
 			return GeometryView<T>(GetRawVertexData(it->m_bufferIndex).data() + it->m_offset, it->m_stride);
 		}
 
+		Geometry AsFormat(std::span<Attribute const> attributes) const;
+
 		Geometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data)
 			: m_attributes(std::move(attrs)), m_vertexBuffers(std::move(data)) {
 		}
 
 		Geometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data, std::optional<std::vector<index_t>> indices)
 			: m_attributes(std::move(attrs)), m_vertexBuffers(std::move(data)), m_indexBuffer(std::move(indices)) {
+		}
+
+		inline bool HasFormat(std::span<Attribute const> attributes) const {
+			return FormatsEqual(m_attributes, attributes);
 		}
 
 		static Expected<Geometry> LoadGLTF(

@@ -6,7 +6,7 @@
 #include <iostream>
 #include <glog/logging.h>
 
-namespace okami {
+using namespace okami;
 
 Expected<Geometry> Geometry::LoadGLTF(std::filesystem::path const& path, std::span<Attribute const> attributes) {
     tinygltf::Model model;
@@ -391,4 +391,114 @@ Expected<Geometry> Geometry::FromBuffers(GeometryBuffers const& buffers, std::sp
     return Geometry(std::move(resultAttributes), std::move(vertexBuffers), std::move(indexBuffer));
 }
 
-} // namespace okami
+Geometry Geometry::AsFormat(std::span<Attribute const> attributes) const {
+    if (attributes.empty()) {
+        return Geometry(); // Return empty geometry
+    }
+
+    // Calculate vertex count from existing geometry
+    size_t vertexCount = 0;
+    if (!m_attributes.empty()) {
+        // Use the first attribute to determine vertex count
+        const auto& firstAttr = m_attributes[0];
+        size_t bufferSize = m_vertexBuffers[firstAttr.m_bufferIndex].size();
+        vertexCount = bufferSize / firstAttr.m_stride;
+    }
+
+    if (vertexCount == 0) {
+        return Geometry(); // No vertices to convert
+    }
+
+    // Determine how many buffers we need for the target format
+    int maxBufferIndex = 0;
+    for (const auto& attr : attributes) {
+        maxBufferIndex = std::max(maxBufferIndex, attr.m_bufferIndex);
+    }
+
+    // Create new vertex buffers
+    std::vector<std::vector<uint8_t>> newVertexBuffers(maxBufferIndex + 1);
+    
+    // Calculate buffer sizes and initialize them
+    for (int bufferIdx = 0; bufferIdx <= maxBufferIndex; ++bufferIdx) {
+        size_t bufferSize = 0;
+        size_t stride = 0;
+        
+        // Find the stride for this buffer
+        for (const auto& attr : attributes) {
+            if (attr.m_bufferIndex == bufferIdx) {
+                stride = std::max(stride, attr.m_stride);
+            }
+        }
+        
+        if (stride > 0) {
+            bufferSize = stride * vertexCount;
+            newVertexBuffers[bufferIdx].resize(bufferSize, 0); // Initialize with zeros
+        }
+    }
+
+    // Copy attribute data from source to destination format
+    std::vector<Attribute> newAttributes;
+    
+    for (const auto& targetAttr : attributes) {
+        // Find the corresponding source attribute
+        auto sourceIt = std::find_if(m_attributes.begin(), m_attributes.end(),
+            [&targetAttr](const Attribute& attr) { 
+                return attr.m_type == targetAttr.m_type; 
+            });
+
+        if (sourceIt == m_attributes.end()) {
+            LOG(WARNING) << "Source attribute not found for type: " << static_cast<int>(targetAttr.m_type);
+            continue; // Skip attributes that don't exist in source
+        }
+
+        const auto& sourceAttr = *sourceIt;
+
+        // Validate size compatibility
+        if (sourceAttr.m_size != targetAttr.m_size) {
+            LOG(WARNING) << "Attribute size mismatch for type: " << static_cast<int>(targetAttr.m_type)
+                        << " (source: " << sourceAttr.m_size << ", target: " << targetAttr.m_size << ")";
+            continue;
+        }
+
+        // Get source and destination data pointers
+        const uint8_t* srcData = m_vertexBuffers[sourceAttr.m_bufferIndex].data() + sourceAttr.m_offset;
+        uint8_t* dstData = newVertexBuffers[targetAttr.m_bufferIndex].data() + targetAttr.m_offset;
+
+        // Copy vertex data for this attribute
+        for (size_t vertexIdx = 0; vertexIdx < vertexCount; ++vertexIdx) {
+            const uint8_t* srcVertex = srcData + vertexIdx * sourceAttr.m_stride;
+            uint8_t* dstVertex = dstData + vertexIdx * targetAttr.m_stride;
+            
+            std::memcpy(dstVertex, srcVertex, targetAttr.m_size);
+        }
+
+        // Add the attribute to the new geometry
+        newAttributes.push_back(targetAttr);
+    }
+
+    // Copy index buffer if it exists
+    std::optional<std::vector<index_t>> newIndexBuffer;
+    if (m_indexBuffer.has_value()) {
+        newIndexBuffer = *m_indexBuffer; // Copy the index buffer
+    }
+
+    return Geometry(
+        std::move(newAttributes),
+        std::move(newVertexBuffers), 
+        std::move(newIndexBuffer)
+    );
+}
+
+bool okami::FormatsEqual(std::span<Attribute const> a, std::span<Attribute const> b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].m_type != b[i].m_type ||
+            a[i].m_size != b[i].m_size ||
+            a[i].m_offset != b[i].m_offset ||
+            a[i].m_stride != b[i].m_stride ||
+            a[i].m_bufferIndex != b[i].m_bufferIndex) {
+            return false;
+        }
+    }
+    return true;
+}

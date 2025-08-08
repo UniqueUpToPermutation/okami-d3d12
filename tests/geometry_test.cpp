@@ -501,3 +501,85 @@ TEST_F(GeometryTest, FromBuffers_TangentWith3Components_Success) {
         FAIL() << "Failed to access tangent view: " << e.what();
     }
 }
+
+TEST_F(GeometryTest, AsFormat_InterleaveToSeparate_Success) {
+    // Arrange - create interleaved geometry
+    std::vector<float> interleavedData = {
+        // Vertex 0: pos(x,y,z), normal(x,y,z)
+        0.0f, 1.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+        // Vertex 1: pos(x,y,z), normal(x,y,z)  
+        -1.0f, -1.0f, 0.0f,  0.0f, 0.0f, 1.0f,
+        // Vertex 2: pos(x,y,z), normal(x,y,z)
+        1.0f, -1.0f, 0.0f,   0.0f, 0.0f, 1.0f
+    };
+
+    GeometryBuffers buffers;
+    buffers.positions = std::span<float const>(interleavedData.data(), 9); // 3 vertices * 3 floats
+    buffers.normals = std::span<float const>(interleavedData.data() + 3, 9); // offset by 3, then 3 vertices * 3 floats
+
+    // Create interleaved layout
+    std::vector<Attribute> interleavedAttributes = {
+        {AttributeType::Position, 0, 12, 0, 24},   // Buffer 0, 12 bytes, offset 0, stride 24
+        {AttributeType::Normal, 0, 12, 12, 24}     // Buffer 0, 12 bytes, offset 12, stride 24
+    };
+
+    auto interleavedResult = Geometry::FromBuffers(buffers, interleavedAttributes);
+    ASSERT_TRUE(interleavedResult.has_value());
+    auto interleavedGeometry = std::move(interleavedResult.value());
+
+    // Define separate buffer layout
+    std::vector<Attribute> separateAttributes = {
+        {AttributeType::Position, 0, 12, 0, 12},   // Buffer 0, 12 bytes, offset 0, stride 12
+        {AttributeType::Normal, 1, 12, 0, 12}      // Buffer 1, 12 bytes, offset 0, stride 12
+    };
+
+    // Act - convert to separate buffers
+    auto separateGeometry = interleavedGeometry.AsFormat(separateAttributes);
+
+    // Assert
+    auto attributes = separateGeometry.GetAttributes();
+    EXPECT_EQ(attributes.size(), 2);
+
+    // Check that we have two separate buffers
+    auto posView = separateGeometry.GetConstView<glm::vec3>(AttributeType::Position);
+    auto normalView = separateGeometry.GetConstView<glm::vec3>(AttributeType::Normal);
+
+    // Verify data integrity
+    EXPECT_FLOAT_EQ(posView[0].x, 0.0f);
+    EXPECT_FLOAT_EQ(posView[0].y, 1.0f);
+    EXPECT_FLOAT_EQ(posView[0].z, 0.0f);
+
+    EXPECT_FLOAT_EQ(normalView[0].x, 0.0f);
+    EXPECT_FLOAT_EQ(normalView[0].y, 0.0f);
+    EXPECT_FLOAT_EQ(normalView[0].z, 1.0f);
+}
+
+TEST_F(GeometryTest, AsFormat_MissingAttribute_SkipsGracefully) {
+    // Arrange - geometry with only position
+    std::vector<float> positions = {0.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f};
+    
+    GeometryBuffers buffers;
+    buffers.positions = std::span<float const>(positions);
+
+    std::vector<Attribute> sourceAttributes = {
+        {AttributeType::Position, 0, 12, 0, 12}
+    };
+
+    auto sourceResult = Geometry::FromBuffers(buffers, sourceAttributes);
+    ASSERT_TRUE(sourceResult.has_value());
+    auto sourceGeometry = std::move(sourceResult.value());
+
+    // Define target layout that includes normal (which doesn't exist in source)
+    std::vector<Attribute> targetAttributes = {
+        {AttributeType::Position, 0, 12, 0, 24},
+        {AttributeType::Normal, 0, 12, 12, 24}   // This doesn't exist in source
+    };
+
+    // Act
+    auto targetGeometry = sourceGeometry.AsFormat(targetAttributes);
+
+    // Assert - should only have position attribute
+    auto attributes = targetGeometry.GetAttributes();
+    EXPECT_EQ(attributes.size(), 1);
+    EXPECT_EQ(attributes[0].m_type, AttributeType::Position);
+}

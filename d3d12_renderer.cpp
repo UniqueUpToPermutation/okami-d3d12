@@ -31,6 +31,8 @@
 #include "d3d12_primitive_renderer.hpp"
 #include "d3d12_imgui.hpp"
 #include "d3d12_triangle.hpp"
+#include "d3d12_static_mesh.hpp"
+#include "d3d12_upload.hpp"
 
 #include <glog/logging.h>
 
@@ -190,6 +192,7 @@ private:
 	ComPtr<ID3D12Device> m_d3d12Device;
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
+	ComPtr<ID3D12CommandQueue> m_copyCommandQueue;
 	ComPtr<ID3D12Fence> m_fence;
 	std::vector<PerFrameData> m_perFrameData;
 
@@ -213,7 +216,10 @@ private:
 	bool m_headlessMode = false;
 	ComPtr<ID3D12Resource> m_readbackBuffer;
 
+	std::shared_ptr<GpuUploader> m_uploader;
+
 	TriangleRenderer m_triangleRenderer;
+	StaticMeshRenderer m_staticMeshRenderer;
 
 	IStorageAccessor<Transform>* m_transforms = nullptr;
 	Storage<Camera> m_storage;
@@ -246,11 +252,13 @@ public:
 
 		m_storage.RegisterInterfaces(queryable);
 		m_triangleRenderer.RegisterInterfaces(queryable);
+		m_staticMeshRenderer.RegisterInterfaces(queryable);
 	}
 
 	void RegisterSignalHandlers(SignalHandlerCollection& signals) override {
 		m_storage.RegisterSignalHandlers(signals);
 		m_triangleRenderer.RegisterSignalHandlers(signals);
+		m_staticMeshRenderer.RegisterSignalHandlers(signals);
 	}
 
 	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
@@ -323,6 +331,17 @@ public:
 			return Error("Failed to create D3D12 command queue");
 		}
 		m_commandQueue = ComPtr<ID3D12CommandQueue>(commandQueueRaw);
+
+		// Create copy command queue
+		D3D12_COMMAND_QUEUE_DESC copyQueueDesc = {};
+		copyQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+		copyQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+		ID3D12CommandQueue* copyCommandQueueRaw = nullptr;
+		HRESULT hrCopyQueue = m_d3d12Device->CreateCommandQueue(&copyQueueDesc, IID_PPV_ARGS(&copyCommandQueueRaw));
+		if (FAILED(hrCopyQueue) || !copyCommandQueueRaw) {
+			return Error("Failed to create D3D12 copy command queue");
+		}
+		m_copyCommandQueue = ComPtr<ID3D12CommandQueue>(copyCommandQueueRaw);
 
 		if (!m_headlessMode) {
 			// Create swap chain for windowed mode
@@ -519,6 +538,14 @@ public:
 			m_imguiImpl = std::move(imgui.value());
 		}
 
+		// Initialize GPU uploader
+		auto uploader = GpuUploader::Create(*m_d3d12Device.Get());
+		if (!uploader) {
+			return Error("Failed to create GpuUploader");
+		}
+		m_uploader = std::make_shared<GpuUploader>(std::move(uploader.value()));
+
+		// Initialize triangle renderer
 		if (m_triangleRenderer.Startup(
 			*m_d3d12Device.Get(),
 			GetBackbufferRenderTargetState(),
@@ -527,17 +554,32 @@ public:
 			return Error("Failed to initialize TriangleRenderer");
 		}
 
+		// Initialize static mesh renderer
+		if (m_staticMeshRenderer.Startup(
+			*m_d3d12Device.Get(),
+			m_uploader,
+			GetBackbufferRenderTargetState(),
+			static_cast<int>(m_perFrameData.size())
+		).IsError()) {
+			return Error("Failed to initialize StaticMeshRenderer");
+		}
+
 		return Error{}; // Success
 	}
 
 	void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+		m_uploader->Stop();
+		m_uploader.reset();
+		
 		for (auto& frameData : m_perFrameData) {
 			frameData.WaitOnFence(m_fence.Get(), m_eventHandle);
 			frameData.m_commandAllocator->Reset();
 			frameData.m_commandList->Reset(frameData.m_commandAllocator.Get(), nullptr);
 		}
 
-		m_triangleRenderer = {};
+		m_staticMeshRenderer.Shutdown();
+		m_triangleRenderer.Shutdown();
+
 		m_imguiImpl.reset();
 		m_primitiveRenderer.reset();
 		m_readbackBuffer.Reset();
@@ -548,6 +590,7 @@ public:
 		m_fence.Reset();
 		m_perFrameData.clear();
 		m_rtvHeap.reset();
+		m_copyCommandQueue.Reset();
 		m_commandQueue.Reset();
 		m_swapChain.Reset();
 
@@ -559,6 +602,8 @@ public:
 			}
 		}
 #endif
+
+
 		m_d3d12Device.Reset();
 
 		if (!m_headlessMode) {
@@ -590,12 +635,26 @@ public:
 			bool open = true;
 			ImGui::ShowDemoWindow(&open);
 		}
+
+		// Process any pending uploads
+		while (true) {
+			auto commandList = m_uploader->GetExecutableCommandListIfAny();
+			if (!commandList) break;
+
+			ID3D12CommandList* lists[] = { commandList->m_commandList.Get() };
+			m_copyCommandQueue->ExecuteCommandLists(1, lists);
+			m_copyCommandQueue->Signal(
+				commandList->m_fenceToSignal.Get(),
+				commandList->m_fenceValue);
+		}
+		m_uploader->FetchAndFinalizeTasks();
 	}
 
 	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {
 		ModuleResult result;
 		result.Union(m_storage.ProcessSignals());
 		result.Union(m_triangleRenderer.ProcessSignals());
+		result.Union(m_staticMeshRenderer.ProcessSignals());
 		return result;
 	}
 
@@ -700,6 +759,13 @@ public:
 		};
 
 		m_triangleRenderer.Render(
+			*m_d3d12Device.Get(),
+			*frameData.m_commandList.Get(),
+			globals,
+			*m_transforms
+		);
+
+		m_staticMeshRenderer.Render(
 			*m_d3d12Device.Get(),
 			*frameData.m_commandList.Get(),
 			globals,

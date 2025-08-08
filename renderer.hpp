@@ -14,9 +14,7 @@ namespace okami {
 		using CreationData = Geometry;
 	};
 
-	using MeshHandle = ResHandle<Mesh>;
-
 	struct StaticMeshComponent {
-		MeshHandle m_mesh;
+		ResHandle<Mesh> m_mesh;
 	};
 }

@@ -8,6 +8,18 @@
 #include <string>
 #include <iostream>
 
+#define OKAMI_NO_COPY(x) \
+	x(const x&) = delete; \
+	x& operator=(const x&) = delete; \
+
+#define OKAMI_NO_MOVE(x) \
+	x(x&&) = delete; \
+	x& operator=(x&&) = delete; \
+
+#define OKAMI_MOVE(x) \
+	x(x&&) = default; \
+	x& operator=(x&&) = default; \
+
 #ifndef NDEBUG 
 #define OKAMI_ASSERT(condition, message) \
 	do { \

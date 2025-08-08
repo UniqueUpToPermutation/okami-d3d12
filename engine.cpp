@@ -15,24 +15,26 @@ ModuleResult& ModuleResult::Union(ModuleResult const& other) {
 }
 
 Engine::Engine(EngineParams params) : m_params(params) {
-	std::string name;
-	if (m_params.m_argc == 0) {
-		name = "okami";
-	}
-	else {
-		name = m_params.m_argv[0];
-	}
-	google::InitGoogleLogging(name.c_str());
+	if (!google::IsGoogleLoggingInitialized()) {
+		std::string name;
+		if (m_params.m_argc == 0) {
+			name = "okami";
+		}
+		else {
+			name = m_params.m_argv[0];
+		}
+		google::InitGoogleLogging(name.c_str());
 
 #ifndef NDEBUG
-	google::SetStderrLogging(google::LogSeverity::GLOG_INFO); // Enable INFO and WARNING printouts in debug mode
-	google::LogToStderr(); // Ensure logs are printed to stderr
+		google::SetStderrLogging(google::LogSeverity::GLOG_INFO); // Enable INFO and WARNING printouts in debug mode
+		google::LogToStderr(); // Ensure logs are printed to stderr
 #else
-	google::SetStderrLogging(google::LogSeverity::GLOG_ERROR);
-	if (params.m_forceLogToConsole) {
-		google::LogToStderr();
-	}
+		google::SetStderrLogging(google::LogSeverity::GLOG_ERROR);
+		if (params.m_forceLogToConsole) {
+			google::LogToStderr();
+		}
 #endif
+	}
 
 	AddModuleFromFactory<ConfigModuleFactory>();
 	AddModuleFromFactory<PhysicsModuleFactory>();

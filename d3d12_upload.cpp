@@ -23,6 +23,7 @@ struct GpuUploaderImpl {
     };
 
     ComPtr<ID3D12Fence> m_fence;
+    ComPtr<ID3D12Device> m_device;
 
     std::vector<Batch> m_batches;
     std::atomic<UINT64> m_currentWriteIndex{0};
@@ -38,6 +39,7 @@ struct GpuUploaderImpl {
 
     static Expected<std::unique_ptr<GpuUploaderImpl, GpuUploaderImplDelete>> Create(ID3D12Device& device) { 
         auto uploader = std::unique_ptr<GpuUploaderImpl, GpuUploaderImplDelete>(new GpuUploaderImpl());
+        uploader->m_device = ComPtr<ID3D12Device>(&device);
 
         // Create fence for synchronization
         HRESULT hr = device.CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&uploader->m_fence));
@@ -85,6 +87,8 @@ struct GpuUploaderImpl {
         if (m_currentReadIndex < m_currentWriteIndex) {
             auto& batch = m_batches[m_currentReadIndex];
             if (batch.m_commandList) {
+                ++m_currentReadIndex;
+                Kick();
                 return GpuUploaderCommandList{
                     .m_commandList = batch.m_commandList,
                     .m_fenceValue = *batch.m_fenceValue,
@@ -117,7 +121,7 @@ struct GpuUploaderImpl {
                     std::unique_lock<std::mutex> lock(m_taskMutex);
                     m_taskCondition.wait(lock, [this] { 
                         std::unique_ptr<GpuUploaderTask> tempTask;
-                        return m_shouldExit.load() || m_taskQueue.try_dequeue(tempTask);
+                        return m_shouldExit.load() || m_taskQueue.size_approx() > 0;
                     });
                     
                     // If we're exiting, break out
@@ -133,7 +137,7 @@ struct GpuUploaderImpl {
 
                 // Perform the task
                 task->m_fenceValue = fenceValue;
-                task->Execute(*batch.m_commandList.Get());
+                task->Execute(*m_device.Get(), *batch.m_commandList.Get());
                 m_tasksNeedFinalize.enqueue(std::move(task));
 
                 bool moveToNextBatch = [&]() {
@@ -166,10 +170,7 @@ struct GpuUploaderImpl {
         LOG(INFO) << "GpuUploader thread exiting";
     }
 
-    void SubmitTask(std::unique_ptr<GpuUploaderTask> task) {
-        // Enqueue the task for processing
-        m_taskQueue.enqueue(std::move(task));
-        
+    void Kick() {
         // Notify the worker thread that a task is available
         {
             std::lock_guard<std::mutex> lock(m_taskMutex);
@@ -177,14 +178,15 @@ struct GpuUploaderImpl {
         m_taskCondition.notify_one();
     }
 
+    void SubmitTask(std::unique_ptr<GpuUploaderTask> task) {
+        // Enqueue the task for processing
+        m_taskQueue.enqueue(std::move(task));
+        Kick();
+    }
+
     void Stop() {
         m_shouldExit.store(true);
-        
-        // Notify the worker thread to wake up and check the exit condition
-        {
-            std::lock_guard<std::mutex> lock(m_taskMutex);
-        }
-        m_taskCondition.notify_all();
+        Kick();
         
         if (m_thread.joinable()) {
             m_thread.join();

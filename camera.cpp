@@ -53,6 +53,33 @@ Camera Camera::Identity() {
 		Projection{ NoProjection{} } };
 }
 
+Camera Camera::Perspective(
+			float fov, 
+			float nearZ, 
+			float farZ) {
+	return Camera{
+		Projection{PerspectiveProjection{ 
+			.m_fovY = fov, 
+			.m_aspectRatio = std::nullopt, 
+			.m_nearZ = nearZ, 
+			.m_farZ = farZ
+		}}
+	};
+}
+
+Camera Camera::Orthographic(
+			float width,
+			float nearZ,
+			float farZ) {
+	return Camera{
+		Projection{OrthographicProjection{ 
+			.m_width = width, 
+			.m_nearZ = nearZ, 
+			.m_farZ = farZ
+		}}
+	};
+}
+
 glm::mat4 Camera::GetProjectionMatrix(int width, int height, bool usingDirectX) const {
 	return std::visit(
 		[&](const auto& proj) { return proj.GetProjectionMatrix(width, height, usingDirectX); },

@@ -22,9 +22,29 @@ int main(int argc, char const* argv[]) {
     }
 
 	auto meshLoader = engine.GetResourceManager<Mesh>();
-	auto box = meshLoader->Load(GetAssetsPath() / "assets" / "box.glb");
+	auto box = meshLoader->Load(GetAssetPath("duck.glb"));
 
-    engine.Run();  
+    auto camera = engine.CreateEntity();
+    engine.AddComponent(camera, 
+        Camera::Orthographic(200.0f, -100.0f, 100.0f));
+    engine.AddComponent(camera, 
+        Transform::Translate(0.0f, 50.0f, 5.0f));
+
+    auto boxEntity = engine.CreateEntity();
+    engine.AddComponent(boxEntity, Transform::Identity());
+    engine.AddComponent(boxEntity, StaticMeshComponent{box});
+
+    engine.AddScript([boxEntity](
+        Time const& time,
+		ISignalBus& signalBus,
+		EntityTree& entityTree) {
+
+        signalBus.UpdateComponent<Transform>(boxEntity,
+            Transform::RotateY(static_cast<float>(time.m_totalTime) * 0.5f));
+       
+    }, "Rotate Object");
+
+    engine.Run();
 
     return 0;  
 }

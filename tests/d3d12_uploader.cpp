@@ -31,7 +31,8 @@ TEST_F(D3D12Test, UploaderSimple) {
         DummyTask(ComPtr<ID3D12Device> device, ComPtr<ID3D12Resource>& readOnlyBuffer)
             : m_device(std::move(device)), m_readOnlyBuffer(readOnlyBuffer) {}
 
-        Error Execute(ID3D12GraphicsCommandList& commandList) override {
+        Error Execute(ID3D12Device& device,
+            ID3D12GraphicsCommandList& commandList) override {
             // Describe the new buffer resource
 			D3D12_HEAP_PROPERTIES uploadHeap = {};
 			uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -103,8 +104,9 @@ TEST_F(D3D12Test, UploaderSimple) {
             return {};
         }
         
-        void Finalize() override {
+        Error Finalize() override {
             m_uploadBuffer.Reset();
+            return {};
         }
     };
     

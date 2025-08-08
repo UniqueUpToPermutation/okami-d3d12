@@ -13,7 +13,7 @@
 
 using namespace okami;
 
-std::expected<ComPtr<ID3D12RootSignature>, Error> TriangleRenderer::CreateRootSignature(ID3D12Device& device) {
+Expected<ComPtr<ID3D12RootSignature>> TriangleRenderer::CreateRootSignature(ID3D12Device& device) {
     ComPtr<ID3D12RootSignature> rootSignature;
 
     // Create root parameters: constant buffer for globals, shader resource view for structured buffer
@@ -168,7 +168,7 @@ Error TriangleRenderer::Render(
         auto worldMatrix = transform.AsMatrix();
 
         // Set instance data
-        map->operator[](index) = hlsl::Instance{
+        map->At(index) = hlsl::Instance{
             .m_worldMatrix = worldMatrix,
             .m_worldInverseTransposeMatrix = glm::inverse(glm::transpose(worldMatrix))
         };
@@ -182,4 +182,11 @@ Error TriangleRenderer::Render(
     m_currentBuffer = (m_currentBuffer + 1) % m_perFrameData.size();
 
     return {};
+}
+
+void TriangleRenderer::Shutdown() {
+    m_rootSignature.Reset();
+    m_pipelineState.Reset();
+    m_perFrameData.clear();
+    m_dummyTriangleStorage.Clear();
 }

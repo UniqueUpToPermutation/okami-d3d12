@@ -41,5 +41,13 @@ namespace okami {
 		glm::mat4 GetProjectionMatrix(int width, int height, bool usingDirectX) const;
 	
 		static Camera Identity();
+		static Camera Perspective(
+			float fov, 
+			float nearZ, 
+			float farZ);
+		static Camera Orthographic(
+			float width,
+			float nearZ,
+			float farZ);
 	};
 }

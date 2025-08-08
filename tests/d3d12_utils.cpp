@@ -1,5 +1,7 @@
 #include "d3d12_utils.hpp"
 
+#include <glog/logging.h>
+
 using namespace okami;
 
 void D3D12Test::SetUp() {
