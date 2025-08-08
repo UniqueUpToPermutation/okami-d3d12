@@ -82,6 +82,12 @@ void Engine::Shutdown() {
 	m_modules.clear();
 }
 
+void Engine::UploadResources() {
+	for (auto& module : m_modules) {
+		module->UploadResources();
+	}
+}
+
 void Engine::Run(std::optional<size_t> runFrameCount) {
 	m_shouldExit.store(false);
 
@@ -120,21 +126,19 @@ void Engine::Run(std::optional<size_t> runFrameCount) {
 		};
 
 		// Update frame
-		auto updateFrame = [&]() {
+		UploadResources();
+
+		for (auto& module : m_modules) {
+			module->OnFrameBegin(time, m_signalHandlers, m_entityTree);
+		}
+
+		ModuleResult result;
+		do {
+			result = {};
 			for (auto& module : m_modules) {
-				module->OnFrameBegin(time, m_signalHandlers, m_entityTree);
+				result.Union(module->HandleSignals(time, m_signalHandlers));
 			}
-
-			ModuleResult result;
-			do {
-				result = {};
-				for (auto& module : m_modules) {
-					result.Union(module->HandleSignals(time, m_signalHandlers));
-				}
-			} while (!result.m_idle);
-			};
-
-		updateFrame();
+		} while (!result.m_idle);
 
 		// Render frame
 		if (renderer) {
@@ -185,7 +189,8 @@ public:
 	}
 
 	std::string_view GetName() const override { return m_name; }
-
+	void UploadResources() override {}
+	
 	ScriptModule(script_t func, std::string const& name) : m_func(std::move(func)) {
 		m_name = std::string("ScriptModule: ") + name;
 	}

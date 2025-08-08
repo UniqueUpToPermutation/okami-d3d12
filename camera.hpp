@@ -45,8 +45,18 @@ namespace okami {
 			float fov, 
 			float nearZ, 
 			float farZ);
+		static Camera Perspective(
+			float fov,
+			float aspect,
+			float nearZ, 
+			float farZ);
 		static Camera Orthographic(
 			float width,
+			float nearZ,
+			float farZ);
+		static Camera Orthographic(
+			float width,
+			float height,
 			float nearZ,
 			float farZ);
 	};

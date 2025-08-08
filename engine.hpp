@@ -213,7 +213,11 @@ namespace okami {
 		virtual Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) = 0;
 		virtual void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) = 0;
 
-		// Called at the beginning of each frame
+		// Called at the very beginning of each frame, to allow the module
+		// to finalize any resources 
+		virtual void UploadResources() = 0;
+
+		// Called at the beginning of each frame (after upload resources)
 		// This is the only time when the module can modify the entity tree
 		virtual void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& entityTree) = 0;
 
@@ -374,6 +378,7 @@ namespace okami {
 		}
 
 		Error Startup();
+		void UploadResources();
 		void Run(std::optional<size_t> frameCount = std::nullopt);
 		void Shutdown();
 

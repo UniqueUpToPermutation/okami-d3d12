@@ -31,13 +31,13 @@ PSInput VSMain(VSInput input)
     }
     else if (input.vertexID == 1)
     {
-        position = float3(0.5f, -sqrt(3.0) / 4.0f, 0.0f);
-        color = float3(0.0f, 1.0f, 0.0f); // Green
+        position = float3(-0.5f, -sqrt(3.0) / 4.0f, 0.0f);
+        color = float3(0.0f, 0.0f, 1.0f); // Blue
     }
     else // input.vertexID == 2
     {
-        position = float3(-0.5f, -sqrt(3.0) / 4.0f, 0.0f);
-        color = float3(0.0f, 0.0f, 1.0f); // Blue
+        position = float3(0.5f, -sqrt(3.0) / 4.0f, 0.0f);
+        color = float3(0.0f, 1.0f, 0.0f); // Green
     }
 
     // Apply instance transformation

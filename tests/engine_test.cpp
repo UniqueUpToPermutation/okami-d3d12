@@ -42,6 +42,8 @@ public:
         m_shutdownCalled = true;
     }
 
+    void UploadResources() override {}
+
     void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& world) override {
         m_frameBeginCount++;
     }

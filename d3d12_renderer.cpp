@@ -620,6 +620,21 @@ public:
 		}
 	}
 
+	void UploadResources() override {
+		// Process any pending uploads
+		while (true) {
+			auto commandList = m_uploader->GetExecutableCommandListIfAny();
+			if (!commandList) break;
+
+			ID3D12CommandList* lists[] = { commandList->m_commandList.Get() };
+			m_copyCommandQueue->ExecuteCommandLists(1, lists);
+			m_copyCommandQueue->Signal(
+				commandList->m_fenceToSignal.Get(),
+				commandList->m_fenceValue);
+		}
+		m_uploader->FetchAndFinalizeTasks();
+	}
+
 	void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& world) override {
 		if (!m_headlessMode) {
 			glfwPollEvents();
@@ -635,19 +650,6 @@ public:
 			bool open = true;
 			ImGui::ShowDemoWindow(&open);
 		}
-
-		// Process any pending uploads
-		while (true) {
-			auto commandList = m_uploader->GetExecutableCommandListIfAny();
-			if (!commandList) break;
-
-			ID3D12CommandList* lists[] = { commandList->m_commandList.Get() };
-			m_copyCommandQueue->ExecuteCommandLists(1, lists);
-			m_copyCommandQueue->Signal(
-				commandList->m_fenceToSignal.Get(),
-				commandList->m_fenceValue);
-		}
-		m_uploader->FetchAndFinalizeTasks();
 	}
 
 	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {

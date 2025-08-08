@@ -46,12 +46,12 @@ PSInput VSMain(VSInput input)
     float3 tangent = mul(worldMatrix, float4(input.tangent, 0.0)).xyz;
     normal = normalize(normal);
     tangent = normalize(tangent);
-    float3 bitagent = cross(normal, tangent);
+    float3 bitangent = cross(normal, tangent);
     
     result.normal = normal;
     result.tangent = tangent;
-    result.bitangent = bitagent;
-    
+    result.bitangent = bitangent;
+
     return result;
 }
 

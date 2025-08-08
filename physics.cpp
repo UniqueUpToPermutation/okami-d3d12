@@ -24,6 +24,8 @@ public:
 	void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& world) override {
 	}
 
+	void UploadResources() override {}
+
 	ModuleResult HandleSignals(Time const&, ISignalBus& signalBus) override {
 		return m_storage.ProcessSignals();
 	}

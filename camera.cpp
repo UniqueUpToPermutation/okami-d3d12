@@ -15,10 +15,12 @@ glm::mat4 OrthographicProjection::GetProjectionMatrix(int width, int height, boo
 	float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
 	float size_x = m_width.value_or(static_cast<float>(width));
 	float size_y = m_height.value_or(size_x / aspectRatio);
+
 	auto proj = glm::ortho(
 		-size_x / 2.0f, size_x / 2.0f,
 		-size_y / 2.0f, size_y / 2.0f,
 		m_nearZ, m_farZ);
+
 	if (usingDirectX) {
 		return g_openGlToDirectX * proj;
 	}
@@ -30,7 +32,9 @@ glm::mat4 OrthographicProjection::GetProjectionMatrix(int width, int height, boo
 glm::mat4 PerspectiveProjection::GetProjectionMatrix(int width, int height, bool usingDirectX) const {
 	float aspect = m_aspectRatio.value_or(
 		static_cast<float>(width) / static_cast<float>(height));
+
 	auto proj = glm::perspective(m_fovY, aspect, m_nearZ, m_farZ);
+
 	if (usingDirectX) {
 		return g_openGlToDirectX * proj;
 	}
@@ -67,6 +71,22 @@ Camera Camera::Perspective(
 	};
 }
 
+Camera Camera::Perspective(
+			float fov,
+			float aspect,
+			float nearZ, 
+			float farZ) {
+	return Camera{
+		Projection{PerspectiveProjection{
+			.m_fovY = fov,
+			.m_aspectRatio = aspect,
+			.m_nearZ = nearZ,
+			.m_farZ = farZ
+		}}
+	};
+}
+
+
 Camera Camera::Orthographic(
 			float width,
 			float nearZ,
@@ -74,6 +94,21 @@ Camera Camera::Orthographic(
 	return Camera{
 		Projection{OrthographicProjection{ 
 			.m_width = width, 
+			.m_nearZ = nearZ, 
+			.m_farZ = farZ
+		}}
+	};
+}
+
+Camera Camera::Orthographic(
+			float width,
+			float height,
+			float nearZ,	
+			float farZ) {
+	return Camera{
+		Projection{OrthographicProjection{ 
+			.m_width = width, 
+			.m_height = height, 
 			.m_nearZ = nearZ, 
 			.m_farZ = farZ
 		}}

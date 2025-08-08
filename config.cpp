@@ -296,6 +296,8 @@ public:
 	void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
 	}
 
+    void UploadResources() override {}
+
 	void OnFrameBegin(Time const& time, ISignalBus& signalBus, EntityTree& entityTree) override {
         m_deserializers.clear();
         m_configs.clear();
