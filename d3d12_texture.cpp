@@ -84,6 +84,7 @@ Error TextureLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& 
     if (FAILED(hr)) {
         return Error("Failed to create texture resource");
     }
+    m_privateData.m_resource->SetName(L"Okami Managed Texture Resource");
 
     // Store texture properties
     m_privateData.m_dxgiFormat = dxgiFormat;
@@ -104,6 +105,7 @@ Error TextureLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& 
     if (FAILED(hr)) {
         return Error("Failed to create texture upload buffer");
     }
+    m_uploadBuffer->SetName(L"Okami Managed Texture Upload Buffer");
 
     // Prepare subresource data
     D3D12_SUBRESOURCE_DATA subresourceData = {};

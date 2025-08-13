@@ -46,6 +46,7 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
         return vertexBufferResult.error();
     }
     m_privateData.m_vertexBuffer = std::move(vertexBufferResult.value());
+    m_privateData.m_vertexBuffer.GetResource()->SetName(L"Okami Managed Vertex Buffer");
 
     // Create upload buffer for vertex data
     ComPtr<ID3D12Resource> vertexUploadBuffer;
@@ -63,6 +64,7 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
     if (FAILED(hr)) {
         return Error("Failed to create vertex upload buffer");
     }
+    vertexUploadBuffer->SetName(L"Okami Managed Vertex Upload Buffer");
 
     // Map and copy vertex data
     void* vertexMappedData = nullptr;
@@ -91,6 +93,7 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
             return indexBufferResult.error();
         }
         m_privateData.m_indexBuffer = std::move(indexBufferResult.value());
+        m_privateData.m_indexBuffer.GetResource()->SetName(L"Okami Managed Index Buffer");
 
         // Create upload buffer for index data
         ComPtr<ID3D12Resource> indexUploadBuffer;
@@ -107,6 +110,7 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
         if (FAILED(hr)) {
             return Error("Failed to create index upload buffer");
         }
+        indexUploadBuffer->SetName(L"Okami Managed Index Upload Buffer");
 
         // Map and copy index data
         void* indexMappedData = nullptr;

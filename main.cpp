@@ -21,7 +21,7 @@ int main(int argc, char const* argv[]) {
         std::cerr << "Engine startup failed: " << err << std::endl;  
     }
 
-	/*auto texture = engine.Load<Texture>(GetTestAssetPath("test.png"));
+	auto texture = engine.Load<Texture>(GetTestAssetPath("test.png"));
     auto texture2 = engine.Load<Texture>(GetTestAssetPath("test2.png"));
 
     auto spriteEntity = engine.CreateEntity();
@@ -53,7 +53,7 @@ int main(int argc, char const* argv[]) {
     engine.AddComponent(spriteEntity7, Transform::_2D(0.0f, -200.0f));
 
     auto cameraEntity = engine.CreateEntity();
-    engine.AddComponent(cameraEntity, Camera::Orthographic(-1.0, 1.0));*/
+    engine.AddComponent(cameraEntity, Camera::Orthographic(-1.0, 1.0));
 
     engine.Run();
 
