@@ -6,15 +6,15 @@ using namespace okami;
 
 class PhysicsModule final : public IEngineModule {
 public:
-	void RegisterInterfaces(InterfaceCollection& queryable) override {
+	void Register(InterfaceCollection& queryable,
+		SignalHandlerCollection& handlers) override {
 		m_storage.RegisterInterfaces(queryable);
+		m_storage.RegisterSignalHandlers(handlers);
 	}
 
-	void RegisterSignalHandlers(SignalHandlerCollection& eventBus) override {
-		m_storage.RegisterSignalHandlers(eventBus);
-	}
-
-	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+	Error Startup(InterfaceCollection& queryable, 
+		SignalHandlerCollection& handlers, 
+		ISignalBus& eventBus) override {
 		return {};
 	}
 

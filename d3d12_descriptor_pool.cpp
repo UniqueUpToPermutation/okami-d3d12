@@ -25,6 +25,7 @@ std::expected<DescriptorPool, Error> DescriptorPool::Create(
 	DescriptorPool pool;
 	pool.m_count = descriptorCount;
 	pool.m_heapType = heapType;
+	pool.m_flags = flags;
 
 	// Describe the descriptor heap
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
@@ -49,12 +50,11 @@ std::expected<DescriptorPool, Error> DescriptorPool::Create(
 	return pool;
 }
 
-DescriptorPool::Handle DescriptorPool::Alloc()
-{
+std::optional<DescriptorPool::Handle> DescriptorPool::TryAlloc() {
 	if (m_freeIndices.empty()) {
 		m_freeBlockStart++;
 		if (m_freeBlockStart >= m_count) {
-			throw std::runtime_error("Descriptor pool exhausted");
+			return {};
 		}
 		return m_freeBlockStart - 1;
 	}
@@ -64,6 +64,15 @@ DescriptorPool::Handle DescriptorPool::Alloc()
 		m_freeIndices.erase(it);
 		return handle;
 	}
+}
+
+DescriptorPool::Handle DescriptorPool::Alloc()
+{
+	auto handle = TryAlloc();
+	if (!handle.has_value()) {
+		throw std::runtime_error("Failed to allocate descriptor");
+	}
+	return handle.value();
 }
 
 void DescriptorPool::Free(DescriptorPool::Handle handle)

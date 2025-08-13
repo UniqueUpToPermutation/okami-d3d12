@@ -20,6 +20,7 @@
 #include <directxtk12/DirectXHelpers.h>
 #include <directxtk12/PrimitiveBatch.h>
 #include <DirectXTex.h>
+#include <comdef.h>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -33,6 +34,8 @@
 #include "d3d12_triangle.hpp"
 #include "d3d12_static_mesh.hpp"
 #include "d3d12_upload.hpp"
+#include "d3d12_mesh.hpp"
+#include "d3d12_texture.hpp"
 
 #include <glog/logging.h>
 
@@ -219,7 +222,11 @@ private:
 	std::shared_ptr<GpuUploader> m_uploader;
 
 	TriangleRenderer m_triangleRenderer;
-	StaticMeshRenderer m_staticMeshRenderer;
+
+	std::shared_ptr<MeshManager> m_meshManager;
+	std::shared_ptr<TextureManager> m_textureManager;
+
+	std::shared_ptr<StaticMeshRenderer> m_staticMeshRenderer;
 
 	IStorageAccessor<Transform>* m_transforms = nullptr;
 	Storage<Camera> m_storage;
@@ -245,23 +252,22 @@ public:
 		}
 	}
 
-	void RegisterInterfaces(InterfaceCollection& queryable) override {
+	void Register(InterfaceCollection& queryable, SignalHandlerCollection& signals) override {
 		queryable.Register<IRenderer>(this);
 
 		RegisterConfig<RendererConfig>(queryable, LOG_WRAP(WARNING));
 
 		m_storage.RegisterInterfaces(queryable);
 		m_triangleRenderer.RegisterInterfaces(queryable);
-		m_staticMeshRenderer.RegisterInterfaces(queryable);
-	}
 
-	void RegisterSignalHandlers(SignalHandlerCollection& signals) override {
 		m_storage.RegisterSignalHandlers(signals);
 		m_triangleRenderer.RegisterSignalHandlers(signals);
-		m_staticMeshRenderer.RegisterSignalHandlers(signals);
 	}
 
-	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+	Error Startup(
+		InterfaceCollection& queryable, 
+		SignalHandlerCollection& handlers,
+		ISignalBus& eventBus) override {
 		m_transforms = queryable.QueryStorage<Transform>();
 		if (m_transforms == nullptr) {
 			return Error("Transform storage not found!");
@@ -303,8 +309,11 @@ public:
 		// Enable the D3D12 debug layer if in a debug build
 		{
 			ComPtr<ID3D12Debug> debugController;
-			if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf())))) {
+			HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf()));
+			if (SUCCEEDED(hr)) {
 				debugController->EnableDebugLayer();
+			} else {
+				LOG(ERROR) << _com_error(hr).ErrorMessage();
 			}
 		}
 #endif
@@ -316,7 +325,8 @@ public:
 			IID_PPV_ARGS(&d3d12Device)
 		);
 		if (FAILED(hr) || !d3d12Device) {
-			return Error("Failed to create D3D12 device");
+			LOG(ERROR) << _com_error(hr).ErrorMessage();
+			return Error("Failed to create D3D12 device!");
 		}
 
 		m_d3d12Device = ComPtr<ID3D12Device>(d3d12Device);
@@ -328,6 +338,7 @@ public:
 		ID3D12CommandQueue* commandQueueRaw = nullptr;
 		HRESULT hrQueue = m_d3d12Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueueRaw));
 		if (FAILED(hrQueue) || !commandQueueRaw) {
+			LOG(ERROR) << _com_error(hr).ErrorMessage();
 			return Error("Failed to create D3D12 command queue");
 		}
 		m_commandQueue = ComPtr<ID3D12CommandQueue>(commandQueueRaw);
@@ -348,6 +359,7 @@ public:
 			ComPtr<IDXGIFactory7> dxgiFactory;
 			HRESULT hrFactory = CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.GetAddressOf()));
 			if (FAILED(hrFactory)) {
+				LOG(ERROR) << _com_error(hrFactory).ErrorMessage();
 				return Error("Failed to create DXGI factory");
 			}
 
@@ -554,15 +566,30 @@ public:
 			return Error("Failed to initialize TriangleRenderer");
 		}
 
+		// Initialize the mesh manager
+		m_meshManager = std::make_shared<MeshManager>(m_uploader);
+		m_meshManager->Register(queryable);
+
+		// Initialize the texture manager
+		auto manager = TextureManager::Create(*m_d3d12Device.Get(), m_uploader);
+		if (!manager) {
+			return Error("Failed to create TextureManager");
+		}
+		m_textureManager = manager.value();
+		m_textureManager->Register(queryable);
+
 		// Initialize static mesh renderer
-		if (m_staticMeshRenderer.Startup(
+		auto staticMeshRenderer = StaticMeshRenderer::Create(
 			*m_d3d12Device.Get(),
-			m_uploader,
+			m_meshManager,
 			GetBackbufferRenderTargetState(),
 			static_cast<int>(m_perFrameData.size())
-		).IsError()) {
-			return Error("Failed to initialize StaticMeshRenderer");
+		);
+		if (!staticMeshRenderer) {
+			return Error("Failed to create StaticMeshRenderer");
 		}
+		m_staticMeshRenderer = std::move(staticMeshRenderer.value());
+		m_staticMeshRenderer->Register(queryable, handlers);
 
 		return Error{}; // Success
 	}
@@ -577,7 +604,8 @@ public:
 			frameData.m_commandList->Reset(frameData.m_commandAllocator.Get(), nullptr);
 		}
 
-		m_staticMeshRenderer.Shutdown();
+		m_staticMeshRenderer.reset();
+
 		m_triangleRenderer.Shutdown();
 
 		m_imguiImpl.reset();
@@ -656,7 +684,7 @@ public:
 		ModuleResult result;
 		result.Union(m_storage.ProcessSignals());
 		result.Union(m_triangleRenderer.ProcessSignals());
-		result.Union(m_staticMeshRenderer.ProcessSignals());
+		result.Union(m_staticMeshRenderer->ProcessSignals());
 		return result;
 	}
 
@@ -705,6 +733,10 @@ public:
 		frameData.WaitOnFence(m_fence.Get(), m_eventHandle);
 		frameData.m_commandAllocator->Reset();
 		frameData.m_commandList->Reset(frameData.m_commandAllocator.Get(), nullptr);
+
+		// Perform necessary resource transitions
+		m_meshManager->TransitionMeshes(*frameData.m_commandList.Get());
+		m_textureManager->TransitionTextures(*m_d3d12Device.Get(), *frameData.m_commandList.Get());
 
 		// Set up viewport and scissor rectangle
 		D3D12_VIEWPORT viewport = {};
@@ -767,7 +799,7 @@ public:
 			*m_transforms
 		);
 
-		m_staticMeshRenderer.Render(
+		m_staticMeshRenderer->Render(
 			*m_d3d12Device.Get(),
 			*frameData.m_commandList.Get(),
 			globals,

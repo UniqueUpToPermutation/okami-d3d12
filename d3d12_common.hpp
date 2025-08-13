@@ -151,10 +151,11 @@ namespace okami {
 		double m_sizeDecay = 0.95; // Decay factor for size
 		double m_expandFactor = 2.0; // Factor to expand size when needed
 		size_t m_currentSize = 0;
+		size_t m_minSize = 0;
 
 		inline size_t Reset(size_t m_size) {
-			m_currentSize = m_size;
-			m_weightedSize = static_cast<double>(m_size);
+			m_currentSize = std::max<size_t>(m_size, m_minSize);
+			m_weightedSize = static_cast<double>(m_currentSize);
 			return m_currentSize;
 		}
 
@@ -166,8 +167,14 @@ namespace okami {
 				return Reset(static_cast<size_t>(m_weightedSize * m_expandFactor));
 			}
 			else if (m_weightedSize <= m_currentSize / (m_expandFactor * m_expandFactor)) {
-				// Buffer is too large, shrink it
-				return Reset(static_cast<size_t>(m_weightedSize * m_expandFactor));
+				if (m_currentSize > m_minSize)
+				{
+					// Buffer is too large, shrink it
+					return Reset(static_cast<size_t>(m_weightedSize * m_expandFactor));
+				} else {
+					// Can't shrink below minimum size	
+					return {};
+				}
 			}
 			else {
 				return {};
@@ -328,4 +335,7 @@ namespace okami {
 
 	std::vector<Attribute> GetVertexAttributes(std::span<D3D12_INPUT_ELEMENT_DESC const> inputElements);
 	size_t GetFormatSize(DXGI_FORMAT format);
+
+	VertexFormat GetStaticMeshFormat();
+	VertexFormat GetMeshFormat(GeometryType type);
 }

@@ -13,6 +13,7 @@ namespace okami {
     class GpuUploaderTask {
     private:
         UINT64 m_fenceValue;
+        Error m_result;
 
     public:
         // Called on I/O thread
@@ -20,6 +21,10 @@ namespace okami {
         
         // Called on main thread after task has completed uploading to GPU
         virtual Error Finalize() = 0;
+
+        inline Error GetError() const {
+            return m_result;
+        }
 
         virtual ~GpuUploaderTask() = default;
 
@@ -32,10 +37,47 @@ namespace okami {
         void operator()(GpuUploaderImpl* impl);
     };
 
-    struct GpuUploaderCommandList {
+    class GpuUploaderCommandListLock {
+    private:
+        GpuUploaderImpl* m_uploader = nullptr;
+
+    public:
         ComPtr<ID3D12GraphicsCommandList> m_commandList;
         UINT64 m_fenceValue;
         ComPtr<ID3D12Fence> m_fenceToSignal;
+
+        ~GpuUploaderCommandListLock();
+
+        inline GpuUploaderCommandListLock(
+            GpuUploaderImpl* uploader,
+            ComPtr<ID3D12GraphicsCommandList> commandList,
+            UINT64 fenceValue,
+            ComPtr<ID3D12Fence> fenceToSignal)
+            : m_uploader(uploader),
+              m_commandList(std::move(commandList)),
+              m_fenceValue(fenceValue),
+              m_fenceToSignal(std::move(fenceToSignal)) {}
+
+        inline GpuUploaderCommandListLock(GpuUploaderCommandListLock&& other) {
+            m_commandList = std::move(other.m_commandList);
+            m_fenceValue = other.m_fenceValue;
+            m_fenceToSignal = std::move(other.m_fenceToSignal);
+            m_uploader = other.m_uploader;
+            other.m_uploader = nullptr;
+        }
+
+        inline GpuUploaderCommandListLock& operator=(GpuUploaderCommandListLock&& other) {
+            if (this != &other) {
+                m_commandList = std::move(other.m_commandList);
+                m_fenceValue = other.m_fenceValue;
+                m_fenceToSignal = std::move(other.m_fenceToSignal);
+                m_uploader = other.m_uploader;
+                other.m_uploader = nullptr;
+            }
+            return *this;
+        }
+
+        OKAMI_NO_COPY(GpuUploaderCommandListLock);
     };
 
     class GpuUploader {
@@ -53,7 +95,7 @@ namespace okami {
         void SubmitTask(std::unique_ptr<GpuUploaderTask> task);
 
         // Gets a command list that is ready to be executed.
-        std::optional<GpuUploaderCommandList> GetExecutableCommandListIfAny();
+        std::optional<GpuUploaderCommandListLock> GetExecutableCommandListIfAny();
 
         // Finalizes all tasks and cleans up associated resources.
         // Returns the number of tasks still on the GPU.

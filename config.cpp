@@ -244,14 +244,11 @@ public:
 		return "Configuration Module";
 	}
 
-	void RegisterInterfaces(InterfaceCollection& queryable) override {
+	void Register(InterfaceCollection& queryable, SignalHandlerCollection& handlers) override {
 		queryable.Register<IConfigModule>(this);
 	}
 
-	void RegisterSignalHandlers(SignalHandlerCollection& eventBus) override {
-	}
-
-	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+	Error Startup(InterfaceCollection& queryable, SignalHandlerCollection& handlers, ISignalBus& eventBus) override {
         YAML::Node config;
         
         try {

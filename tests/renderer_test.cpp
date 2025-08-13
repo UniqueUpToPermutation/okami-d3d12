@@ -91,7 +91,7 @@ TEST(RendererTest, Cube) {
 	do {
 		engine.UploadResources();
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
-	} while (!box.IsValid());
+	} while (!box.IsLoaded());
 
 	// Render a single frame
     engine.Run(1);

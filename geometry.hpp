@@ -29,7 +29,13 @@ namespace okami {
 		size_t m_stride; // Stride in bytes
 	};
 
-	bool FormatsEqual(std::span<Attribute const> a, std::span<Attribute const> b);
+	enum class GeometryType {
+		StaticMesh
+	};
+
+	using VertexFormat = std::span<Attribute const>;
+
+	bool FormatsEqual(VertexFormat a, VertexFormat b);
 
 	template <typename T>
 	class GeometryView {
@@ -58,18 +64,18 @@ namespace okami {
 		std::optional<std::span<index_t const>> indices = std::nullopt;
 	};
 
-	class Geometry {
+	class RawGeometry {
 	private:
 		std::vector<Attribute> m_attributes;
 		std::vector<std::vector<uint8_t>> m_vertexBuffers; // Raw vertex data
 		std::optional<std::vector<index_t>> m_indexBuffer;
 
 	public:
-		Geometry() = default;
-		OKAMI_NO_COPY(Geometry);
-		OKAMI_MOVE(Geometry);
+		RawGeometry() = default;
+		OKAMI_NO_COPY(RawGeometry);
+		OKAMI_MOVE(RawGeometry);
 
-		std::span<Attribute const> GetAttributes() const {
+		VertexFormat GetFormat() const {
 			return m_attributes;
 		}
 
@@ -135,13 +141,13 @@ namespace okami {
 			return GeometryView<T>(GetRawVertexData(it->m_bufferIndex).data() + it->m_offset, it->m_stride);
 		}
 
-		Geometry AsFormat(std::span<Attribute const> attributes) const;
+		RawGeometry AsFormat(std::span<Attribute const> attributes) const;
 
-		Geometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data)
+		RawGeometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data)
 			: m_attributes(std::move(attrs)), m_vertexBuffers(std::move(data)) {
 		}
 
-		Geometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data, std::optional<std::vector<index_t>> indices)
+		RawGeometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data, std::optional<std::vector<index_t>> indices)
 			: m_attributes(std::move(attrs)), m_vertexBuffers(std::move(data)), m_indexBuffer(std::move(indices)) {
 		}
 
@@ -149,13 +155,18 @@ namespace okami {
 			return FormatsEqual(m_attributes, attributes);
 		}
 
-		static Expected<Geometry> LoadGLTF(
-			std::filesystem::path const& path,
-			std::span<Attribute const> attributes);
-
-		static Expected<Geometry> FromBuffers(
+		static Expected<RawGeometry> FromBuffers(
 			GeometryBuffers const& buffers,
 			std::span<Attribute const> attributes
 		);
+	};
+
+	struct InitMesh {
+		RawGeometry m_geometry;
+		GeometryType m_type;
+
+		static Expected<InitMesh> LoadGLTF(
+			std::filesystem::path const& path,
+			std::function<VertexFormat(GeometryType)> getVertexFormat);
 	};
 }

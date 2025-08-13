@@ -189,3 +189,13 @@ size_t okami::GetFormatSize(DXGI_FORMAT format) {
             return 0;
     }
 }
+
+VertexFormat okami::GetMeshFormat(GeometryType type) {
+    switch (type) {
+        case GeometryType::StaticMesh:
+            return GetStaticMeshFormat();
+        default:
+            LOG(WARNING) << "Unknown geometry type: " << static_cast<int>(type);
+            return {};
+    }        
+}

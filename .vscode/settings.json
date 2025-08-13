@@ -94,6 +94,7 @@
         "xtr1common": "cpp",
         "xtree": "cpp",
         "xutility": "cpp",
-        "*.fxh": "cpp"
+        "*.fxh": "cpp",
+        "resumable": "cpp"
     }
 }

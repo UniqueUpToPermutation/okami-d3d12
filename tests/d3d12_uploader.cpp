@@ -1,6 +1,9 @@
 #include "d3d12_utils.hpp"
 
 #include "../d3d12_upload.hpp"
+#include "../d3d12_mesh.hpp"
+#include "../d3d12_texture.hpp"
+#include "../paths.hpp"
 
 #include <array>
 
@@ -26,10 +29,11 @@ TEST_F(D3D12Test, UploaderSimple) {
         ComPtr<ID3D12Device> m_device;
         ComPtr<ID3D12Resource> m_uploadBuffer;
         ComPtr<ID3D12Resource>& m_readOnlyBuffer;
+        std::atomic<bool>& m_isComplete;
 
     public:
-        DummyTask(ComPtr<ID3D12Device> device, ComPtr<ID3D12Resource>& readOnlyBuffer)
-            : m_device(std::move(device)), m_readOnlyBuffer(readOnlyBuffer) {}
+        DummyTask(ComPtr<ID3D12Device> device, ComPtr<ID3D12Resource>& readOnlyBuffer, std::atomic<bool>& isComplete)
+            : m_device(std::move(device)), m_readOnlyBuffer(readOnlyBuffer), m_isComplete(isComplete) {}
 
         Error Execute(ID3D12Device& device,
             ID3D12GraphicsCommandList& commandList) override {
@@ -106,27 +110,27 @@ TEST_F(D3D12Test, UploaderSimple) {
         
         Error Finalize() override {
             m_uploadBuffer.Reset();
+            m_isComplete = true;
             return {};
         }
     };
-    
-    uploader.SubmitTask(std::make_unique<DummyTask>(m_device, readOnlyBuffer));
-    
-    std::optional<GpuUploaderCommandList> commandListOpt = uploader.GetExecutableCommandListIfAny();
-    while (!commandListOpt.has_value()) {
-        // Wait for a command list to become available
-        Sleep(1);
-        commandListOpt = uploader.GetExecutableCommandListIfAny();
-    }
 
-    std::array<ID3D12CommandList*, 1> copyCommandLists = {
-        commandListOpt->m_commandList.Get(),
-    };
-    m_copyQueue->ExecuteCommandLists(1, copyCommandLists.data());
-	m_copyQueue->Signal(commandListOpt->m_fenceToSignal.Get(), commandListOpt->m_fenceValue);
-
+    std::atomic<bool> isComplete = false;
+    uploader.SubmitTask(std::make_unique<DummyTask>(m_device, readOnlyBuffer, std::ref(isComplete)));
+    
     // Finalize tasks
-    while (uploader.FetchAndFinalizeTasks() > 0) {
+    while (!isComplete.load()) {
+        std::optional<GpuUploaderCommandListLock> commandListOpt = uploader.GetExecutableCommandListIfAny();
+        if (commandListOpt) {
+            std::array<ID3D12CommandList*, 1> copyCommandLists = {
+                commandListOpt->m_commandList.Get(),
+            };
+            m_copyQueue->ExecuteCommandLists(1, copyCommandLists.data());
+            m_copyQueue->Signal(commandListOpt->m_fenceToSignal.Get(), commandListOpt->m_fenceValue);
+        }
+
+        uploader.FetchAndFinalizeTasks();
+
         // Wait for tasks to finalize
         Sleep(1);
     }
@@ -152,4 +156,125 @@ TEST_F(D3D12Test, UploaderSimple) {
 	m_commandQueue->Signal(m_fence.Get(), ++m_fenceValue);
 
     uploader.Stop();
+}
+
+TEST_F(D3D12Test, UploaderMesh) {
+    // Create a simple uploader
+    auto uploaderResult = GpuUploader::Create(*m_device.Get());
+    ASSERT_TRUE(uploaderResult.has_value()) << "Failed to create GPU uploader: " << uploaderResult.error().Str();
+
+    auto uploader = std::make_shared<GpuUploader>(std::move(uploaderResult.value()));
+    MeshManager manager(uploader);
+
+    auto pathValid = GetTestAssetPath("box.glb");
+    auto pathInvalid = GetTestAssetPath("nonexistant.glb");
+
+    auto [res_id, resource] = manager.NewResource(pathValid.string());
+    auto [res_id_invalid, resource_invalid] = manager.NewResource(pathInvalid.string());
+
+    uploader->SubmitTask(std::make_unique<MeshLoadTask>(
+        pathValid,
+        res_id,
+        &manager
+    ));
+
+    uploader->SubmitTask(std::make_unique<MeshLoadTask>(
+        pathInvalid,
+        res_id_invalid,
+        &manager
+    ));
+
+    // Finalize tasks
+    while (!resource.IsLoaded() || !resource_invalid.IsLoaded()) {
+        std::optional<GpuUploaderCommandListLock> commandListOpt = uploader->GetExecutableCommandListIfAny();
+        if (commandListOpt) {
+            std::array<ID3D12CommandList*, 1> copyCommandLists = {
+                commandListOpt->m_commandList.Get(),
+            };
+            m_copyQueue->ExecuteCommandLists(1, copyCommandLists.data());
+            m_copyQueue->Signal(commandListOpt->m_fenceToSignal.Get(), commandListOpt->m_fenceValue);
+        }
+
+        uploader->FetchAndFinalizeTasks();
+
+        // Wait for tasks to finalize
+        Sleep(1);
+    }
+
+    // Transition resource
+    m_commandAllocator->Reset();
+    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+    manager.TransitionMeshes(*m_commandList.Get());
+    m_commandList->Close();
+
+    std::array<ID3D12CommandList*, 1> commandLists = {
+        m_commandList.Get()
+    };
+    m_commandQueue->ExecuteCommandLists(1, commandLists.data());
+	m_commandQueue->Signal(m_fence.Get(), ++m_fenceValue);
+
+    uploader->Stop();
+}
+
+TEST_F(D3D12Test, UploaderTexture) {
+    // Create a simple uploader
+    auto uploaderResult = GpuUploader::Create(*m_device.Get());
+    ASSERT_TRUE(uploaderResult.has_value()) << "Failed to create GPU uploader: " << uploaderResult.error().Str();
+
+    auto uploader = std::make_shared<GpuUploader>(std::move(uploaderResult.value()));
+    auto manager = TextureManager::Create(*m_device.Get(), uploader);
+
+    if (!manager) {
+        FAIL() << "Failed to create TextureManager: " << manager.error().Str();
+        return;
+    }
+
+    auto pathValid = GetTestAssetPath("test.png");
+    auto pathInvalid = GetTestAssetPath("nonexistant.png");
+
+    auto [res_id, resource] = manager->get()->NewResource(pathValid.string());
+    auto [res_id_invalid, resource_invalid] = manager->get()->NewResource(pathInvalid.string());
+
+    uploader->SubmitTask(std::make_unique<TextureLoadTask>(
+        pathValid,
+        res_id,
+        manager->get()
+    ));
+
+    uploader->SubmitTask(std::make_unique<TextureLoadTask>(
+        pathInvalid,
+        res_id_invalid,
+        manager->get()
+    ));
+
+    // Finalize tasks
+    while (!resource.IsLoaded() || !resource_invalid.IsLoaded()) {
+        std::optional<GpuUploaderCommandListLock> commandListOpt = uploader->GetExecutableCommandListIfAny();
+        if (commandListOpt) {
+            std::array<ID3D12CommandList*, 1> copyCommandLists = {
+                commandListOpt->m_commandList.Get(),
+            };
+            m_copyQueue->ExecuteCommandLists(1, copyCommandLists.data());
+            m_copyQueue->Signal(commandListOpt->m_fenceToSignal.Get(), commandListOpt->m_fenceValue);
+        }
+
+        uploader->FetchAndFinalizeTasks();
+
+        // Wait for tasks to finalize
+        Sleep(1);
+    }
+
+    // Transition resource
+    m_commandAllocator->Reset();
+    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+    manager->get()->TransitionTextures(*m_device.Get(), *m_commandList.Get());
+    m_commandList->Close();
+
+    std::array<ID3D12CommandList*, 1> commandLists = {
+        m_commandList.Get()
+    };
+    m_commandQueue->ExecuteCommandLists(1, commandLists.data());
+	m_commandQueue->Signal(m_fence.Get(), ++m_fenceValue);
+
+    uploader->Stop();
 }

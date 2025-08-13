@@ -53,7 +53,7 @@ std::expected<std::unique_ptr<ImGuiImpl>, Error> ImGuiImpl::Create(
 	ImGui_ImplDX12_InitInfo info = {};
 	info.Device = device;
 	info.CommandQueue = commandQueue;
-	info.SrvDescriptorHeap = imgui->m_imguiHeap->m_heap.Get();
+	info.SrvDescriptorHeap = imgui->m_imguiHeap->GetHeap();
 	info.UserData = imgui.get();
 	info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info,
 		D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle,
@@ -88,7 +88,8 @@ void ImGuiImpl::Render(ID3D12GraphicsCommandList* cl) {
 	ImGui::Render();
 	ImDrawData* drawData = ImGui::GetDrawData();
 	if (drawData && drawData->Valid) {
-		cl->SetDescriptorHeaps(1, m_imguiHeap->m_heap.GetAddressOf());
+		ID3D12DescriptorHeap* heaps[] = { m_imguiHeap->GetHeap() };
+		cl->SetDescriptorHeaps(1, heaps);
 		ImGui_ImplDX12_RenderDrawData(drawData, cl); // Command list will be set later
 	}
 }

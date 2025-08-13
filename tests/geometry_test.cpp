@@ -33,18 +33,22 @@ TEST_F(GeometryTest, LoadGLTF_BoxFile_Success) {
         {AttributeType::Position, 0, 12, 0, 24},   // glm::vec3 at offset 0
         {AttributeType::Normal, 0, 12, 12, 24}     // glm::vec3 at offset 12
     };
-    
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
+
     // Act
-    auto result = Geometry::LoadGLTF(boxPath, requestedAttributes);
+    auto result = InitMesh::LoadGLTF(boxPath, vertexFormatGetter);
     
     // Assert
     ASSERT_TRUE(result.has_value()) 
         << "Failed to load box.glb: " << (result.error().IsError() ? result.error().Str() : "Unknown error");
     
-    const auto& geometry = result.value();
+    const auto& geometry = result.value().m_geometry;
     
     // Verify we have some attributes
-    auto attributes = geometry.GetAttributes();
+    auto attributes = geometry.GetFormat();
     EXPECT_GT(attributes.size(), 0) << "Geometry should have at least one attribute";
     
     // Verify we have vertex data
@@ -108,9 +112,13 @@ TEST_F(GeometryTest, LoadGLTF_NonexistentFile_Failure) {
     std::vector<Attribute> requestedAttributes = {
         {AttributeType::Position, 0, 12, 0, 12}
     };
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
     
     // Act
-    auto result = Geometry::LoadGLTF(nonexistentPath, requestedAttributes);
+    auto result = InitMesh::LoadGLTF(nonexistentPath, vertexFormatGetter);
     
     // Assert
     EXPECT_FALSE(result.has_value()) << "Should fail to load nonexistent file";
@@ -128,10 +136,14 @@ TEST_F(GeometryTest, LoadGLTF_UnsupportedExtension_Failure) {
     std::vector<Attribute> requestedAttributes = {
         {AttributeType::Position, 0, 12, 0, 12}
     };
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
     
     // Act
-    auto result = Geometry::LoadGLTF(invalidPath, requestedAttributes);
-    
+    auto result = InitMesh::LoadGLTF(invalidPath, vertexFormatGetter);
+
     // Assert
     EXPECT_FALSE(result.has_value()) << "Should fail to load file with unsupported extension";
     if (!result.has_value()) {
@@ -153,13 +165,17 @@ TEST_F(GeometryTest, GetView_ValidAttribute_Success) {
         {AttributeType::Position, 0, 12, 0, 24},   // glm::vec3 at offset 0
         {AttributeType::Normal, 0, 12, 12, 24}     // glm::vec3 at offset 12
     };
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
     
-    auto result = Geometry::LoadGLTF(boxPath, requestedAttributes);
+    auto result = InitMesh::LoadGLTF(boxPath, vertexFormatGetter);
     ASSERT_TRUE(result.has_value());
     
-    const auto& geometry = result.value();
-    auto attributes = geometry.GetAttributes();
-    
+    const auto& geometry = result.value().m_geometry;
+    auto attributes = geometry.GetFormat();
+
     // Find position attribute
     bool hasPosition = false;
     for (const auto& attr : attributes) {
@@ -190,11 +206,15 @@ TEST_F(GeometryTest, GetView_InvalidAttribute_Throws) {
     std::vector<Attribute> requestedAttributes = {
         {AttributeType::Position, 0, 12, 0, 12}
     };
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
     
-    auto result = Geometry::LoadGLTF(boxPath, requestedAttributes);
+    auto result = InitMesh::LoadGLTF(boxPath, vertexFormatGetter);
     ASSERT_TRUE(result.has_value());
     
-    const auto& geometry = result.value();
+    const auto& geometry = result.value().m_geometry;
     
     // Act & Assert - try to get an attribute that we didn't load
     EXPECT_THROW({
@@ -214,12 +234,16 @@ TEST_F(GeometryTest, LoadGLTF_IndexBuffer_LoadedIfAvailable) {
         {AttributeType::Position, 0, 12, 0, 24},   // glm::vec3 at offset 0
         {AttributeType::Normal, 0, 12, 12, 24}     // glm::vec3 at offset 12
     };
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
     
     // Act
-    auto result = Geometry::LoadGLTF(boxPath, requestedAttributes);
+    auto result = InitMesh::LoadGLTF(boxPath, vertexFormatGetter);
     ASSERT_TRUE(result.has_value());
     
-    const auto& geometry = result.value();
+    const auto& geometry = result.value().m_geometry;
     
     // Assert - check if index buffer is available
     if (geometry.HasIndexBuffer()) {
@@ -256,15 +280,19 @@ TEST_F(GeometryTest, LoadGLTF_TangentAndBitangent_HandledGracefully) {
         {AttributeType::Tangent, 0, 12, 24, 36},   // glm::vec3 at offset 24
         {AttributeType::Bitangent, 1, 12, 0, 12}   // glm::vec3 in separate buffer
     };
+
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
     
     // Act
-    auto result = Geometry::LoadGLTF(boxPath, requestedAttributes);
+    auto result = InitMesh::LoadGLTF(boxPath, vertexFormatGetter);
     
     // Assert
     ASSERT_TRUE(result.has_value()) << "LoadGLTF should succeed even if some attributes are missing";
     
-    const auto& geometry = result.value();
-    auto attributes = geometry.GetAttributes();
+    const auto& geometry = result.value().m_geometry;
+    auto attributes = geometry.GetFormat();
     
     // Count which attributes were actually loaded
     bool hasPosition = false, hasNormal = false, hasTangent = false, hasBitangent = false;
@@ -349,8 +377,12 @@ TEST_F(GeometryTest, FromBuffers_ValidData_Success) {
         {AttributeType::TexCoord, 0, 8, 24, 32}    // glm::vec2 at offset 24
     };
     
+    auto vertexFormatGetter = [&](GeometryType type) {
+        return VertexFormat{requestedAttributes};
+    };
+    
     // Act
-    auto result = Geometry::FromBuffers(buffers, requestedAttributes);
+    auto result = RawGeometry::FromBuffers(buffers, requestedAttributes);
     
     // Assert
     ASSERT_TRUE(result.has_value()) << "FromBuffers should succeed with valid data";
@@ -358,7 +390,7 @@ TEST_F(GeometryTest, FromBuffers_ValidData_Success) {
     const auto& geometry = result.value();
     
     // Verify attributes
-    auto attributes = geometry.GetAttributes();
+    auto attributes = geometry.GetFormat();
     EXPECT_EQ(attributes.size(), 3) << "Should have 3 attributes";
     
     // Verify vertex data
@@ -407,7 +439,7 @@ TEST_F(GeometryTest, FromBuffers_EmptyBuffers_Failure) {
     };
     
     // Act
-    auto result = Geometry::FromBuffers(buffers, requestedAttributes);
+    auto result = RawGeometry::FromBuffers(buffers, requestedAttributes);
     
     // Assert
     EXPECT_FALSE(result.has_value()) << "Should fail with empty buffers";
@@ -439,7 +471,7 @@ TEST_F(GeometryTest, FromBuffers_MismatchedVertexCounts_Failure) {
     };
     
     // Act
-    auto result = Geometry::FromBuffers(buffers, requestedAttributes);
+    auto result = RawGeometry::FromBuffers(buffers, requestedAttributes);
     
     // Assert
     EXPECT_FALSE(result.has_value()) << "Should fail with mismatched vertex counts";
@@ -477,13 +509,13 @@ TEST_F(GeometryTest, FromBuffers_TangentWith3Components_Success) {
     };
     
     // Act
-    auto result = Geometry::FromBuffers(buffers, requestedAttributes);
+    auto result = RawGeometry::FromBuffers(buffers, requestedAttributes);
     
     // Assert
     ASSERT_TRUE(result.has_value()) << "FromBuffers should succeed with 3-component tangents";
     
     const auto& geometry = result.value();
-    auto attributes = geometry.GetAttributes();
+    auto attributes = geometry.GetFormat();
     EXPECT_EQ(attributes.size(), 2) << "Should have 2 attributes (position + tangent)";
     
     // Verify we can access tangent data
@@ -523,7 +555,7 @@ TEST_F(GeometryTest, AsFormat_InterleaveToSeparate_Success) {
         {AttributeType::Normal, 0, 12, 12, 24}     // Buffer 0, 12 bytes, offset 12, stride 24
     };
 
-    auto interleavedResult = Geometry::FromBuffers(buffers, interleavedAttributes);
+    auto interleavedResult = RawGeometry::FromBuffers(buffers, interleavedAttributes);
     ASSERT_TRUE(interleavedResult.has_value());
     auto interleavedGeometry = std::move(interleavedResult.value());
 
@@ -537,7 +569,7 @@ TEST_F(GeometryTest, AsFormat_InterleaveToSeparate_Success) {
     auto separateGeometry = interleavedGeometry.AsFormat(separateAttributes);
 
     // Assert
-    auto attributes = separateGeometry.GetAttributes();
+    auto attributes = separateGeometry.GetFormat();
     EXPECT_EQ(attributes.size(), 2);
 
     // Check that we have two separate buffers
@@ -565,7 +597,7 @@ TEST_F(GeometryTest, AsFormat_MissingAttribute_SkipsGracefully) {
         {AttributeType::Position, 0, 12, 0, 12}
     };
 
-    auto sourceResult = Geometry::FromBuffers(buffers, sourceAttributes);
+    auto sourceResult = RawGeometry::FromBuffers(buffers, sourceAttributes);
     ASSERT_TRUE(sourceResult.has_value());
     auto sourceGeometry = std::move(sourceResult.value());
 
@@ -579,7 +611,7 @@ TEST_F(GeometryTest, AsFormat_MissingAttribute_SkipsGracefully) {
     auto targetGeometry = sourceGeometry.AsFormat(targetAttributes);
 
     // Assert - should only have position attribute
-    auto attributes = targetGeometry.GetAttributes();
+    auto attributes = targetGeometry.GetFormat();
     EXPECT_EQ(attributes.size(), 1);
     EXPECT_EQ(attributes[0].m_type, AttributeType::Position);
 }

@@ -207,10 +207,12 @@ namespace okami {
 	public:
 		virtual ~IEngineModule() = default;
 
-		virtual void RegisterInterfaces(InterfaceCollection& queryable) = 0;
-		virtual void RegisterSignalHandlers(SignalHandlerCollection& handlers) = 0;
-
-		virtual Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) = 0;
+		virtual void Register(
+			InterfaceCollection& queryable, 
+			SignalHandlerCollection& handlers) = 0;
+		virtual Error Startup(InterfaceCollection& queryable, 
+			SignalHandlerCollection& handlers, 
+			ISignalBus& eventBus) = 0;
 		virtual void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) = 0;
 
 		// Called at the very beginning of each frame, to allow the module
@@ -325,7 +327,7 @@ namespace okami {
 		inline T const& Get() const {
 			return m_resource->m_data;
 		}
-		inline bool IsValid() const {
+		inline bool IsLoaded() const {
 			return m_resource && m_resource->m_loaded.load(std::memory_order_acquire);
 		}
 		inline resource_id_t GetId() const {
@@ -335,7 +337,7 @@ namespace okami {
 			return m_resource ? m_resource->m_path : std::string_view();
 		}
 		inline operator bool() const {
-			return IsValid();
+			return IsLoaded();
 		}
 	};
 

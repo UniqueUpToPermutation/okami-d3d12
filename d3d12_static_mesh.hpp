@@ -8,27 +8,14 @@
 #include "d3d12_common.hpp"
 #include "d3d12_upload.hpp"
 #include "storage.hpp"
+#include "d3d12_mesh.hpp"
 
 namespace okami {
-	struct MeshPrivate {
-		GpuBuffer m_vertexBuffer;
-		GpuBuffer m_indexBuffer;
-		UINT m_vertexCount = 0;
-		UINT m_indexCount = 0;
-	};
+	VertexFormat GetStaticMeshFormat();
 
-	struct MeshImpl {
-		std::unique_ptr<Resource<Mesh>> m_public;
-		MeshPrivate m_private;
-	};
-
-	class StaticMeshRenderer : public IResourceManager<Mesh> {
+	class StaticMeshRenderer {
 	private:
-		std::unordered_map<std::filesystem::path, resource_id_t> m_meshPathsToIds;
-		std::unordered_map<resource_id_t, MeshImpl> m_meshesById;
-
-		std::queue<resource_id_t> m_meshesToTransition;
-		std::atomic<resource_id_t> m_nextResourceId{0};
+		std::shared_ptr<MeshManager> m_manager;
 
 		Storage<StaticMeshComponent> m_staticMeshStorage;
 
@@ -44,23 +31,17 @@ namespace okami {
 		int m_currentBuffer = 0;
 
 		std::shared_ptr<GpuUploader> m_uploader;
-		std::vector<Attribute> m_vertexAttributes;
 
 		static Expected<ComPtr<ID3D12RootSignature>> CreateRootSignature(ID3D12Device& device);
 
+		StaticMeshRenderer() = default;
+
 	public:
-		StaticMeshRenderer();
+		OKAMI_NO_COPY(StaticMeshRenderer);
+		OKAMI_NO_MOVE(StaticMeshRenderer);
 
-		inline std::span<Attribute const> GetVertexFormat() const {
-			return m_vertexAttributes;
-		}
-
-		inline void RegisterInterfaces(InterfaceCollection& queryable) {
+		inline void Register(InterfaceCollection& queryable, SignalHandlerCollection& signals) {
 			m_staticMeshStorage.RegisterInterfaces(queryable);
-			queryable.Register<IResourceManager<Mesh>>(this);
-		}
-
-		inline void RegisterSignalHandlers(SignalHandlerCollection& signals) {
 			m_staticMeshStorage.RegisterSignalHandlers(signals);
 		}
 
@@ -68,9 +49,9 @@ namespace okami {
 			return m_staticMeshStorage.ProcessSignals();
 		}
 
-		Error Startup(
+		static Expected<std::shared_ptr<StaticMeshRenderer>> Create(
 			ID3D12Device& device,
-			std::shared_ptr<GpuUploader> uploader,
+			std::shared_ptr<MeshManager> manager,
 			DirectX::RenderTargetState rts,
 			int bufferCount);
 
@@ -79,15 +60,5 @@ namespace okami {
 			ID3D12GraphicsCommandList& commandList,
 			hlsl::Globals const& globals,
 			IStorageAccessor<Transform> const& transforms);
-
-		void Shutdown();
-
-		std::pair<resource_id_t, ResHandle<Mesh>> NewResource(
-			std::optional<std::string_view> path = std::nullopt);
-
-		Error Finalize(resource_id_t resourceId, MeshPrivate&& privateData);
-
-		ResHandle<Mesh> Load(std::string_view path) override;
-		ResHandle<Mesh> Create(typename Mesh::CreationData&& data) override;
 	};
 }

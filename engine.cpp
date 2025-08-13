@@ -53,8 +53,7 @@ Error Engine::Startup() {
 		});
 
 	for (auto& module : m_modules) {
-		module->RegisterInterfaces(m_interfaces);
-		module->RegisterSignalHandlers(m_signalHandlers);
+		module->Register(m_interfaces, m_signalHandlers);
 	}
 
 	if (auto* renderer = m_interfaces.Query<IRenderer>(); renderer) {
@@ -63,7 +62,7 @@ Error Engine::Startup() {
 
 	for (const auto& module : m_modules) {
 		LOG(INFO) << "Starting module: " << module->GetName();
-		auto error = module->Startup(m_interfaces, m_signalHandlers);
+		auto error = module->Startup(m_interfaces, m_signalHandlers, m_signalHandlers);
 		if (error.IsError()) {
 			LOG(ERROR) << "Failed to start module: " << module->GetName() << " - " << error;
 			return error;
@@ -173,10 +172,11 @@ private:
 	std::string m_name;
 
 public:
-	void RegisterInterfaces(InterfaceCollection& queryable) override {}
-	void RegisterSignalHandlers(SignalHandlerCollection& handlers) override {}
+	void Register(InterfaceCollection& queryable, SignalHandlerCollection& handlers) override {
+		// No interfaces or signal handlers to register for script modules
+	}
 
-	Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override { return {}; }
+	Error Startup(InterfaceCollection& queryable, SignalHandlerCollection& handlers, ISignalBus& eventBus) override { return {}; }
 	void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {}
 
 	void OnFrameBegin(Time const& time,

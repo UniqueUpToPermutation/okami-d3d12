@@ -8,7 +8,7 @@
 
 using namespace okami;
 
-Expected<Geometry> Geometry::LoadGLTF(std::filesystem::path const& path, std::span<Attribute const> attributes) {
+Expected<InitMesh> InitMesh::LoadGLTF(std::filesystem::path const& path, std::function<VertexFormat(GeometryType)> getVertexFormat) {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err;
@@ -97,6 +97,10 @@ Expected<Geometry> Geometry::LoadGLTF(std::filesystem::path const& path, std::sp
             default: return 0;
         }
     };
+
+    // Use static mesh by default
+    auto geometryType = GeometryType::StaticMesh;
+    auto attributes = getVertexFormat(geometryType);
 
     // Determine the maximum buffer index to know how many buffers we need
     size_t maxBufferIndex = 0;
@@ -197,7 +201,62 @@ Expected<Geometry> Geometry::LoadGLTF(std::filesystem::path const& path, std::sp
 
         auto attrIt = primitive.attributes.find(gltfAttrName);
         if (attrIt == primitive.attributes.end()) {
-            LOG(WARNING) << "Requested attribute " << gltfAttrName << " not found in glTF file";
+            LOG(WARNING) << "Requested attribute " << gltfAttrName << " not found in glTF file, using default values";
+            
+            // Fill with default values based on attribute type
+            auto& targetBuffer = vertexBuffers[requestedAttr.m_bufferIndex];
+            for (size_t vertexIdx = 0; vertexIdx < vertexCount; ++vertexIdx) {
+                uint8_t* dst = targetBuffer.data() + vertexIdx * requestedAttr.m_stride + requestedAttr.m_offset;
+                
+                switch (requestedAttr.m_type) {
+                    case AttributeType::Position:
+                        // Default position: (0, 0, 0)
+                        std::memset(dst, 0, requestedAttr.m_size);
+                        break;
+                    case AttributeType::Normal:
+                        // Default normal: (0, 0, 1) - pointing up
+                        if (requestedAttr.m_size >= 12) { // 3 floats
+                            float defaultNormal[3] = {0.0f, 0.0f, 1.0f};
+                            std::memcpy(dst, defaultNormal, 12);
+                        }
+                        break;
+                    case AttributeType::TexCoord:
+                        // Default UV: (0, 0)
+                        std::memset(dst, 0, requestedAttr.m_size);
+                        break;
+                    case AttributeType::Color:
+                        // Default color: white (1, 1, 1, 1)
+                        if (requestedAttr.m_size >= 16) { // 4 floats
+                            float defaultColor[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+                            std::memcpy(dst, defaultColor, 16);
+                        } else if (requestedAttr.m_size >= 12) { // 3 floats
+                            float defaultColor[3] = {1.0f, 1.0f, 1.0f};
+                            std::memcpy(dst, defaultColor, 12);
+                        }
+                        break;
+                    case AttributeType::Tangent:
+                        // Default tangent: (1, 0, 0) - pointing right
+                        if (requestedAttr.m_size >= 12) { // 3 floats
+                            float defaultTangent[3] = {1.0f, 0.0f, 0.0f};
+                            std::memcpy(dst, defaultTangent, 12);
+                        }
+                        break;
+                    case AttributeType::Bitangent:
+                        // Default bitangent: (0, 1, 0) - pointing forward
+                        if (requestedAttr.m_size >= 12) { // 3 floats
+                            float defaultBitangent[3] = {0.0f, 1.0f, 0.0f};
+                            std::memcpy(dst, defaultBitangent, 12);
+                        }
+                        break;
+                    default:
+                        // For unknown types, just zero out
+                        std::memset(dst, 0, requestedAttr.m_size);
+                        break;
+                }
+            }
+            
+            // Add the attribute to our result with default values
+            resultAttributes.push_back(requestedAttr);
             continue;
         }
 
@@ -241,13 +300,16 @@ Expected<Geometry> Geometry::LoadGLTF(std::filesystem::path const& path, std::sp
     }
 
     if (resultAttributes.empty()) {
-        return std::unexpected(Error("No requested attributes could be loaded"));
+        return std::unexpected(Error("No requested attributes could be loaded or defaulted"));
     }
 
-    return Geometry(std::move(resultAttributes), std::move(vertexBuffers), std::move(indexBuffer));
+    return InitMesh{
+        RawGeometry(std::move(resultAttributes), std::move(vertexBuffers), std::move(indexBuffer)),
+        geometryType
+    };
 }
 
-Expected<Geometry> Geometry::FromBuffers(GeometryBuffers const& buffers, std::span<Attribute const> attributes) {
+Expected<RawGeometry> RawGeometry::FromBuffers(GeometryBuffers const& buffers, std::span<Attribute const> attributes) {
     // Determine vertex count from the first available buffer
     size_t vertexCount = 0;
     
@@ -388,12 +450,12 @@ Expected<Geometry> Geometry::FromBuffers(GeometryBuffers const& buffers, std::sp
         indexBuffer = std::vector<index_t>(buffers.indices->begin(), buffers.indices->end());
     }
     
-    return Geometry(std::move(resultAttributes), std::move(vertexBuffers), std::move(indexBuffer));
+    return RawGeometry(std::move(resultAttributes), std::move(vertexBuffers), std::move(indexBuffer));
 }
 
-Geometry Geometry::AsFormat(std::span<Attribute const> attributes) const {
+RawGeometry RawGeometry::AsFormat(std::span<Attribute const> attributes) const {
     if (attributes.empty()) {
-        return Geometry(); // Return empty geometry
+        return RawGeometry(); // Return empty geometry
     }
 
     // Calculate vertex count from existing geometry
@@ -406,7 +468,7 @@ Geometry Geometry::AsFormat(std::span<Attribute const> attributes) const {
     }
 
     if (vertexCount == 0) {
-        return Geometry(); // No vertices to convert
+        return RawGeometry(); // No vertices to convert
     }
 
     // Determine how many buffers we need for the target format
@@ -482,7 +544,7 @@ Geometry Geometry::AsFormat(std::span<Attribute const> attributes) const {
         newIndexBuffer = *m_indexBuffer; // Copy the index buffer
     }
 
-    return Geometry(
+    return RawGeometry(
         std::move(newAttributes),
         std::move(newVertexBuffers), 
         std::move(newIndexBuffer)

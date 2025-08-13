@@ -27,6 +27,7 @@ void D3D12Test::SetUp() {
     }
 
     m_device = ComPtr<ID3D12Device>(d3d12Device);
+    m_device->SetName(L"TestD3D12Device");
 
     // Create command queue
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
@@ -38,6 +39,7 @@ void D3D12Test::SetUp() {
         throw std::runtime_error("Failed to create D3D12 command queue");
     }
     m_commandQueue = ComPtr<ID3D12CommandQueue>(commandQueueRaw);
+    m_commandQueue->SetName(L"TestD3D12CommandQueue");
 
     // Create command queue
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
@@ -48,6 +50,7 @@ void D3D12Test::SetUp() {
         throw std::runtime_error("Failed to create D3D12 command queue");
     }
     m_copyQueue = ComPtr<ID3D12CommandQueue>(commandQueueRaw);
+    m_copyQueue->SetName(L"TestD3D12CopyQueue");
 
     // Create command allocator
     ID3D12CommandAllocator* commandAllocatorRaw = nullptr;
@@ -56,6 +59,7 @@ void D3D12Test::SetUp() {
         throw std::runtime_error("Failed to create D3D12 command allocator");
     }
     m_commandAllocator = ComPtr<ID3D12CommandAllocator>(commandAllocatorRaw);
+    m_commandAllocator->SetName(L"TestD3D12CommandAllocator");
 
     // Create command list
     ID3D12GraphicsCommandList* commandListRaw = nullptr;
@@ -67,6 +71,7 @@ void D3D12Test::SetUp() {
     }
     m_commandList = ComPtr<ID3D12GraphicsCommandList>(commandListRaw);
     m_commandList->Close(); // Close the command list to prepare it for use
+    m_commandList->SetName(L"TestD3D12CommandList");
 
     // Create fence
 	ID3D12Fence* fenceRaw = nullptr;
@@ -75,6 +80,7 @@ void D3D12Test::SetUp() {
         throw std::runtime_error("Failed to create D3D12 fence");
     }
     m_fence = ComPtr<ID3D12Fence>(fenceRaw);
+    m_fence->SetName(L"TestD3D12Fence");
     m_fenceValue = 0;
     m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (m_fenceEvent == 0) {

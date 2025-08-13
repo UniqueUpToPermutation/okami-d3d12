@@ -25,15 +25,13 @@ private:
     int m_handleSignalsCount = 0;
 
 public:
-    void RegisterInterfaces(InterfaceCollection& queryable) override {
+    void Register(InterfaceCollection& queryable, SignalHandlerCollection& eventBus) override {
         // Mock implementation
     }
 
-    void RegisterSignalHandlers(SignalHandlerCollection& eventBus) override {
-        // Mock implementation
-    }
-
-    Error Startup(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+    Error Startup(InterfaceCollection& queryable,
+        SignalHandlerCollection& handlers, 
+        ISignalBus& eventBus) override {
         m_startupCalled = true;
         return Error(); // No error
     }

@@ -4,6 +4,8 @@
 
 #include <concurrentqueue/concurrentqueue.h>
 
+// #define UPLOAD_DEBUG 
+
 using namespace okami;
 
 namespace okami {
@@ -70,6 +72,9 @@ struct GpuUploaderImpl {
             // Close the command list initially
             batch.m_commandList->Close();
 
+            batch.m_commandList->SetName(L"GpuUploaderCommandList");
+            batch.m_commandAllocator->SetName(L"GpuUploaderCommandAllocator");
+
             uploader->m_batches.emplace_back(std::move(batch));
         }
         
@@ -83,20 +88,24 @@ struct GpuUploaderImpl {
         return m_batches[index % m_batches.size()];
     }
 
-    std::optional<GpuUploaderCommandList> GetExecutableCommandListIfAny() {
+    std::optional<GpuUploaderCommandListLock> GetExecutableCommandListIfAny() {
         if (m_currentReadIndex < m_currentWriteIndex) {
-            auto& batch = m_batches[m_currentReadIndex];
+            auto& batch = GetBatch(m_currentReadIndex);
             if (batch.m_commandList) {
-                ++m_currentReadIndex;
-                Kick();
-                return GpuUploaderCommandList{
-                    .m_commandList = batch.m_commandList,
-                    .m_fenceValue = *batch.m_fenceValue,
-                    .m_fenceToSignal = m_fence
-                };
+                return GpuUploaderCommandListLock(
+                    this,
+                    batch.m_commandList,
+                    *batch.m_fenceValue,
+                    m_fence
+                );
             }
         }
         return std::nullopt;
+    }
+
+    void ReleaseLock(GpuUploaderCommandListLock& lock) {
+        ++m_currentReadIndex;
+        Kick();
     }
 
     void ThreadFunc() {
@@ -104,6 +113,23 @@ struct GpuUploaderImpl {
 
         while (m_shouldExit.load() == false) {
             auto currentIndex = m_currentWriteIndex.load();
+
+            auto shouldMoveToNextBatch = [&]() {
+                auto& nextBatch = GetBatch(currentIndex + 1);
+
+                // Next batch is not ready, still executing task on GPU
+                if (nextBatch.m_fenceValue.has_value() &&
+                    nextBatch.m_fenceValue.value() < m_fence->GetCompletedValue()) {
+                    return false;
+                }
+                // Nobody is waiting for the current batch, so we can continue working.
+                if (m_currentReadIndex.load() < currentIndex) {
+                    return false;
+                }
+
+                return true;
+            };
+
             auto fenceValue = currentIndex + 1;
             auto& batch = GetBatch(currentIndex);
 
@@ -119,10 +145,18 @@ struct GpuUploaderImpl {
                 if (!m_taskQueue.try_dequeue(task)) {
                     // No task available, wait for notification
                     std::unique_lock<std::mutex> lock(m_taskMutex);
-                    m_taskCondition.wait(lock, [this] { 
+                    m_taskCondition.wait(lock, [this, &shouldMoveToNextBatch] {
                         std::unique_ptr<GpuUploaderTask> tempTask;
-                        return m_shouldExit.load() || m_taskQueue.size_approx() > 0;
+                        return m_shouldExit.load() || m_taskQueue.size_approx() > 0 || shouldMoveToNextBatch();
                     });
+
+                    // If we should move to the next batch, break out
+                    if (shouldMoveToNextBatch()) {
+#ifdef UPLOAD_DEBUG
+                        LOG(ERROR) << "Moving to next batch...";
+#endif
+                        break;
+                    }
                     
                     // If we're exiting, break out
                     if (m_shouldExit.load()) {
@@ -137,27 +171,19 @@ struct GpuUploaderImpl {
 
                 // Perform the task
                 task->m_fenceValue = fenceValue;
-                task->Execute(*m_device.Get(), *batch.m_commandList.Get());
+
+#ifdef UPLOAD_DEBUG
+                LOG(ERROR) << "Executing task...";
+#endif
+
+                task->m_result = task->Execute(*m_device.Get(), *batch.m_commandList.Get());
                 m_tasksNeedFinalize.enqueue(std::move(task));
 
-                bool moveToNextBatch = [&]() {
-                    auto& nextBatch = GetBatch(currentIndex + 1);
-
-                    // Next batch is not ready, still executing task on GPU
-                    if (nextBatch.m_fenceValue.has_value() &&
-                        nextBatch.m_fenceValue.value() < m_fence->GetCompletedValue()) {
-                        return false;
-                    }
-                    // Nobody is waiting for the current batch, so we can continue working.
-                    if (m_currentReadIndex.load() < currentIndex) {
-                        return false;
-                    }
-
-                    return true;
-                }();
-
                 // If we can move to the next batch, close the current command list
-                if (moveToNextBatch) {
+                if (shouldMoveToNextBatch()) {
+#ifdef UPLOAD_DEBUG
+                    LOG(ERROR) << "Moving to next batch...";
+#endif
                     break;
                 }
             }
@@ -199,6 +225,10 @@ struct GpuUploaderImpl {
         std::unique_ptr<GpuUploaderTask> task;
         while (m_tasksNeedFinalize.try_dequeue(task)) {
             m_tasksOnGpu.push(std::move(task));
+#ifdef UPLOAD_DEBUG
+            LOG(WARNING) << "Finalizing task with fence value: " 
+                << m_tasksOnGpu.back()->m_fenceValue;
+#endif
         }
         if (!m_tasksOnGpu.empty()) {
             // Check if top task has completed and finalize it
@@ -211,6 +241,12 @@ struct GpuUploaderImpl {
         return m_tasksOnGpu.size();
     }
 };
+
+GpuUploaderCommandListLock::~GpuUploaderCommandListLock() {
+    if (m_uploader) {
+        m_uploader->ReleaseLock(*this);
+    }
+}
 
 void GpuUploaderImplDelete::operator()(GpuUploaderImpl* impl) {
     if (impl) {
@@ -228,7 +264,7 @@ Expected<GpuUploader> GpuUploader::Create(ID3D12Device& device) {
     return uploader;
 }
 
-std::optional<GpuUploaderCommandList> GpuUploader::GetExecutableCommandListIfAny() {
+std::optional<GpuUploaderCommandListLock> GpuUploader::GetExecutableCommandListIfAny() {
     return m_impl->GetExecutableCommandListIfAny();
 }
 

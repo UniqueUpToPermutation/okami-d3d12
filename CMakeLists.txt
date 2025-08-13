@@ -60,8 +60,13 @@ function(add_hlsl_shader TARGET_NAME HLSL_FILE SHADER_TYPE ENTRY_POINT)
     get_filename_component(SHADER_DIR_NAME ${SHADER_DIR} NAME)
     
     # Create a unique output name that includes the source directory
-    # Format: {source_dir}_{shader_name}_{shader_type}.cso
-    set(COMPILED_SHADER "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_${SHADER_TYPE}.cso")
+    # For custom entry points (not standard ones), include entry point name
+    set(STANDARD_ENTRY_POINTS "VSMain;PSMain;CSMain;GSMain;HSMain;DSMain")
+    if(ENTRY_POINT IN_LIST STANDARD_ENTRY_POINTS)
+        set(COMPILED_SHADER "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_${SHADER_TYPE}.cso")
+    else()
+        set(COMPILED_SHADER "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_${SHADER_TYPE}_${ENTRY_POINT}.cso")
+    endif()
     
     # Ensure output directory exists
     get_filename_component(COMPILED_SHADER_DIR ${COMPILED_SHADER} DIRECTORY)
@@ -150,10 +155,36 @@ foreach(HLSL_FILE ${HLSL_FILES})
         # If the entry point function is found in the shader source
         if("${SHADER_CONTENT}" MATCHES "${ENTRY_POINT}")
             add_hlsl_shader(Engine ${HLSL_FILE} ${SHADER_TYPE} ${ENTRY_POINT})
-            # Fix: Use the same path format as the add_hlsl_shader function
+            # Use the same path format as the add_hlsl_shader function
             set(COMPILED_SHADER_PATH "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_${SHADER_TYPE}.cso")
             list(APPEND ALL_COMPILED_SHADERS ${COMPILED_SHADER_PATH})
             message(STATUS "  Found ${ENTRY_POINT} -> will compile as ${SHADER_TYPE}")
+        endif()
+    endforeach()
+    
+    # Additionally, detect compute shaders with custom entry points by looking for [numthreads(...)] attribute
+    string(REGEX MATCHALL "\\[numthreads\\([^)]+\\)\\][^{]*void[ \t\r\n]+([a-zA-Z_][a-zA-Z0-9_]*)" COMPUTE_MATCHES "${SHADER_CONTENT}")
+    foreach(COMPUTE_MATCH ${COMPUTE_MATCHES})
+        # Extract function name from the match
+        string(REGEX REPLACE ".*void[ \t\r\n]+([a-zA-Z_][a-zA-Z0-9_]*)" "\\1" COMPUTE_ENTRY_POINT "${COMPUTE_MATCH}")
+        
+        # Check if this entry point was already processed by the standard entry points
+        set(ALREADY_PROCESSED FALSE)
+        foreach(ENTRY_POINT_PAIR ${SHADER_ENTRY_POINTS})
+            string(REPLACE ":" ";" ENTRY_PARTS ${ENTRY_POINT_PAIR})
+            list(GET ENTRY_PARTS 0 STANDARD_ENTRY_POINT)
+            if("${COMPUTE_ENTRY_POINT}" STREQUAL "${STANDARD_ENTRY_POINT}")
+                set(ALREADY_PROCESSED TRUE)
+                break()
+            endif()
+        endforeach()
+        
+        # If not already processed, add it as a compute shader
+        if(NOT ALREADY_PROCESSED)
+            add_hlsl_shader(Engine ${HLSL_FILE} cs ${COMPUTE_ENTRY_POINT})
+            set(COMPILED_SHADER_PATH "${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}_cs_${COMPUTE_ENTRY_POINT}.cso")
+            list(APPEND ALL_COMPILED_SHADERS ${COMPILED_SHADER_PATH})
+            message(STATUS "  Found compute shader ${COMPUTE_ENTRY_POINT} -> will compile as cs")
         endif()
     endforeach()
 endforeach()

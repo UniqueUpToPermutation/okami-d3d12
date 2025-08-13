@@ -11,9 +11,9 @@ namespace okami {
 	struct DummyTriangleComponent {};
 
 	struct Mesh {
-		using CreationData = Geometry;
+		VertexFormat m_format;
 
-		
+		using CreationData = InitMesh;
 	};
 
 	struct StaticMeshComponent {
