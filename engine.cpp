@@ -87,6 +87,11 @@ void Engine::UploadResources() {
 	}
 }
 
+std::filesystem::path Engine::GetRenderOutputPath(size_t frameIndex) {
+	return std::filesystem::path("renders/") /
+		(std::string{m_params.m_headlessOutputFileStem} + "_" + std::to_string(frameIndex) + ".png");
+}
+
 void Engine::Run(std::optional<size_t> runFrameCount) {
 	m_shouldExit.store(false);
 
@@ -149,12 +154,10 @@ void Engine::Run(std::optional<size_t> runFrameCount) {
 				std::filesystem::create_directory("renders");
 			}
 
-			std::string outputFile = std::string("renders/") +
-				std::string(m_params.m_headlessOutputFileStem) +
-				"_" + std::to_string(frameCount) + ".tga";
+			auto outputFile = GetRenderOutputPath(frameCount);
 			LOG(INFO) << "Saving headless frame to: " << outputFile;
 
-			renderer->SaveToFile(outputFile);
+			renderer->SaveToFile(outputFile.string());
 		}
 
 		frameCount++;

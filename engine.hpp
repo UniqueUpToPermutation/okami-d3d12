@@ -233,8 +233,8 @@ namespace okami {
 	public:
 		virtual ~IRenderer() = default;
 
-		virtual void Render() = 0;
-		virtual void SaveToFile(const std::string& filename) = 0;
+		virtual Error Render() = 0;
+		virtual Error SaveToFile(const std::string& filename) = 0;
 		virtual void SetHeadlessMode(bool headless) = 0;
 
 		virtual void SetActiveCamera(entity_t e) = 0;
@@ -428,6 +428,8 @@ namespace okami {
 		IResourceManager<T>* GetResourceManager() {
 			return m_interfaces.Query<IResourceManager<T>>();
 		}
+
+		std::filesystem::path GetRenderOutputPath(size_t frameIndex);
 
 		/*
 			Used for prototyping and scripting. Run a function every frame.

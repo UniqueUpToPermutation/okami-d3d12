@@ -712,9 +712,9 @@ public:
 		}
 	}
 
-	void Render() override {
+	Error Render() override {
 		if (!m_commandQueue || !m_d3d12Device) {
-			return;
+			return {};
 		}
 
 		// Get current back buffer index
@@ -723,7 +723,7 @@ public:
 			backBufferIndex = 0; // Use first buffer for headless mode
 		}
 		else {
-			if (!m_swapChain) return;
+			if (!m_swapChain) return {};
 			backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 		}
 
@@ -842,12 +842,14 @@ public:
 			// Present
 			m_swapChain->Present(m_config.syncInterval, 0);
 		}
+
+		return {};
 	}
 
-	void SaveToFile(const std::string& filename) override {
+	Error SaveToFile(const std::string& filename) override {
 		if (!m_headlessMode || !m_readbackBuffer) {
 			LOG(ERROR) << "SaveToFile can only be called in headless mode";
-			return;
+			return Error("SaveToFile can only be called in headless mode");
 		}
 
 		// Wait for GPU to finish rendering
@@ -863,7 +865,7 @@ public:
 		);
 		if (FAILED(hr)) {
 			LOG(ERROR) << "Failed to create copy command allocator";
-			return;
+			return Error("Failed to create copy command allocator");
 		}
 
 		ComPtr<ID3D12GraphicsCommandList> copyCommandList;
@@ -876,7 +878,7 @@ public:
 		);
 		if (FAILED(hr)) {
 			LOG(ERROR) << "Failed to create copy command list";
-			return;
+			return Error("Failed to create copy command list");
 		}
 
 		// Copy render target to readback buffer
@@ -911,33 +913,26 @@ public:
 		// Map readback buffer and read the data
 		void* mappedData = nullptr;
 		hr = m_readbackBuffer->Map(0, nullptr, &mappedData);
+		OKAMI_DEFER(m_readbackBuffer->Unmap(0, nullptr));
+
 		if (FAILED(hr)) {
 			LOG(ERROR) << "Failed to map readback buffer";
-			return;
+			return Error("Failed to map readback buffer")	;
 		}
 
-		// Create DirectXTex image from mapped data
-		DirectX::Image image;
-		image.width = m_config.backbufferWidth;
-		image.height = m_config.backbufferHeight;
-		image.format = kBackbufferFormat;
-		image.rowPitch = footprint.Footprint.RowPitch;
-		image.slicePitch = totalBytes;
-		image.pixels = reinterpret_cast<uint8_t*>(mappedData);
+		TextureInfo info{
+			.type = TextureType::TEXTURE_2D,
+			.format = TextureFormat::RGBA8,
+			.width = static_cast<uint32_t>(m_config.backbufferWidth),
+			.height = static_cast<uint32_t>(m_config.backbufferHeight),
+			.depth = 1,
+			.arraySize = 1,
+			.mipLevels = 1
+		};
 
-		// Save to file using DirectXTex
-		std::wstring wFilename(filename.begin(), filename.end());
-		DirectX::SaveToTGAFile(image, wFilename.c_str());
-		
-		if (FAILED(hr)) {
-			LOG(ERROR) << "Failed to save image to file: " << filename;
-		}
-		else {
-			LOG(INFO) << "Successfully saved rendered frame to: " << filename;
-		}
-
-		// Unmap buffer
-		m_readbackBuffer->Unmap(0, nullptr);
+		RawTexture texture(info);
+		std::memcpy(texture.GetData().data(), mappedData, texture.GetData().size());
+		return texture.SavePNG(filename);
 	}
 
 	void SetHeadlessMode(bool headless) override {

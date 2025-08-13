@@ -52,11 +52,18 @@ namespace okami {
         inline const TextureInfo& GetInfo() const { 
             return m_info; 
         }
+
         inline const std::span<uint8_t const> GetData() const {
-            return std::span<uint8_t const>(m_data.data(), m_data.size());
+            return std::span(m_data);
+        }
+
+        inline const std::span<uint8_t> GetData() {
+            return std::span(m_data);
         }
 
         static Expected<RawTexture> FromPNG(const std::filesystem::path& path);
+
+        Error SavePNG(const std::filesystem::path& path) const;
     };
 
     class Texture {

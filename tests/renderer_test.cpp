@@ -5,10 +5,38 @@
 #include "../transform.hpp"
 #include "../camera.hpp"
 #include "../paths.hpp"
+#include "../texture.hpp"
 
 #include "utils.hpp"
 
+#include <glog/logging.h>
+
 using namespace okami;
+
+bool CompareImages(std::filesystem::path const& a, std::filesystem::path const& b) {
+	LOG(INFO) << "Comparing images: " << a << " and " << b;
+	
+	if (!std::filesystem::exists(a) || !std::filesystem::exists(b)) {
+		return false; // One of the files does not exist
+	}
+	
+	RawTexture textureA = *RawTexture::FromPNG(a);
+	RawTexture textureB = *RawTexture::FromPNG(b);
+
+	// Compare contents of the textures
+	if (textureA.GetData().size() != textureB.GetData().size()) {
+		return false;
+	}
+
+	return std::equal(textureA.GetData().begin(), textureA.GetData().end(),
+		textureB.GetData().begin());
+}
+
+void CompareImages(Engine& engine) {
+	auto path = engine.GetRenderOutputPath(0);
+	EXPECT_TRUE(CompareImages(path,
+		GetTestAssetPath(std::filesystem::path{"golden_images"} / path.filename())));
+}
 
 TEST(RendererTest, Triangle) {
 	std::vector <const char*> argsv;
@@ -25,6 +53,9 @@ TEST(RendererTest, Triangle) {
 
 	// Render a single frame
 	engine.Run(1);
+
+	// Check correctness
+	CompareImages(engine);
 }
 
 TEST(RendererTest, TwoTriangles) {
@@ -59,6 +90,9 @@ TEST(RendererTest, TwoTriangles) {
 
 	// Render a single frame
 	engine.Run(1);
+
+	// Check correctness
+	CompareImages(engine);
 }
 
 TEST(RendererTest, Cube) {
@@ -95,4 +129,7 @@ TEST(RendererTest, Cube) {
 
 	// Render a single frame
     engine.Run(1);
+
+	// Check correctness
+	CompareImages(engine);
 }
