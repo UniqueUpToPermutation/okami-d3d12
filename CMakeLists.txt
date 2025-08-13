@@ -30,7 +30,6 @@ find_package(glog CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(directx-headers CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
-find_package(directxtex CONFIG REQUIRED)
 find_package(unofficial-concurrentqueue CONFIG REQUIRED)
 
 # TinyGLTF is header-only and doesn't provide CMake config
@@ -206,10 +205,9 @@ target_link_libraries(Engine PRIVATE
     Microsoft::DirectX-Headers
     d3d12
     dxgi
+    dxguid
     glog::glog
     yaml-cpp::yaml-cpp
-    d3dcompiler
-    Microsoft::DirectXTex
 )
 
 # Add TinyGLTF include directory
@@ -233,11 +231,9 @@ target_link_libraries(EngineLib PUBLIC
     Microsoft::DirectX-Headers
     d3d12
     dxgi
+    dxguid
     glog::glog
     yaml-cpp::yaml-cpp
-    d3dcompiler
-    Microsoft::DirectXTex  
-    unofficial::concurrentqueue::concurrentqueue
 )
 
 # Set include directories for the library

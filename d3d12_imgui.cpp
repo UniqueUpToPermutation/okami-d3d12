@@ -9,6 +9,7 @@ using namespace okami;
 std::expected<std::unique_ptr<ImGuiImpl>, Error> ImGuiImpl::Create(
 	ID3D12Device* device,
 	ID3D12CommandQueue* commandQueue,
+	std::shared_ptr<DescriptorPool> srvPool,
 	GLFWwindow* window,
 	int framesInFlight,
 	DirectX::RenderTargetState rts) {
@@ -38,36 +39,27 @@ std::expected<std::unique_ptr<ImGuiImpl>, Error> ImGuiImpl::Create(
 	}
 
 	std::unique_ptr<ImGuiImpl> imgui = std::make_unique<ImGuiImpl>();
-	auto pool = DescriptorPool::Create(
-		device,
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-		256, // Arbitrary size for SRV descriptors
-		D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
-	);
-	if (!pool) {
-		return std::unexpected(pool.error());
-	}
-	imgui->m_imguiHeap = std::move(*pool);
+	imgui->m_srvPool = srvPool;
 
 	// Initialize ImGui DX12 backend
 	ImGui_ImplDX12_InitInfo info = {};
 	info.Device = device;
 	info.CommandQueue = commandQueue;
-	info.SrvDescriptorHeap = imgui->m_imguiHeap->GetHeap();
+	info.SrvDescriptorHeap = imgui->m_srvPool->GetHeap();
 	info.UserData = imgui.get();
 	info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo* info,
 		D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle,
 		D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
 			auto impl = reinterpret_cast<ImGuiImpl*>(info->UserData);
-			auto newIdx = impl->m_imguiHeap->Alloc();
-			*out_cpu_desc_handle = impl->m_imguiHeap->GetCpuHandle(newIdx);
-			*out_gpu_desc_handle = impl->m_imguiHeap->GetGpuHandle(newIdx);
+			auto newIdx = impl->m_srvPool->Alloc();
+			*out_cpu_desc_handle = impl->m_srvPool->GetCpuHandle(newIdx);
+			*out_gpu_desc_handle = impl->m_srvPool->GetGpuHandle(newIdx);
 		};
 	info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo* info,
 		D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle,
 		D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) {
 			auto impl = reinterpret_cast<ImGuiImpl*>(info->UserData);
-			impl->m_imguiHeap->Free(cpu_desc_handle, gpu_desc_handle);
+			impl->m_srvPool->Free(cpu_desc_handle, gpu_desc_handle);
 		};
 	info.NumFramesInFlight = framesInFlight;
 	info.RTVFormat = rts.rtvFormats[0];
@@ -88,18 +80,18 @@ void ImGuiImpl::Render(ID3D12GraphicsCommandList* cl) {
 	ImGui::Render();
 	ImDrawData* drawData = ImGui::GetDrawData();
 	if (drawData && drawData->Valid) {
-		ID3D12DescriptorHeap* heaps[] = { m_imguiHeap->GetHeap() };
+		ID3D12DescriptorHeap* heaps[] = { m_srvPool->GetHeap() };
 		cl->SetDescriptorHeaps(1, heaps);
 		ImGui_ImplDX12_RenderDrawData(drawData, cl); // Command list will be set later
 	}
 }
 
 void ImGuiImpl::Shutdown() {
-	if (m_imguiHeap) {
+	if (m_srvPool) {
 		ImGui_ImplDX12_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
-		m_imguiHeap.reset();
+		m_srvPool.reset();
 	}
 }
 

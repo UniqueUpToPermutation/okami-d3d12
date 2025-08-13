@@ -51,7 +51,8 @@ hlsl::Camera okami::ToHLSLCamera(
     return hlsl::Camera{
         .m_viewMatrix = view,
         .m_projectionMatrix = proj,
-        .m_viewProjectionMatrix = proj * view
+        .m_viewProjectionMatrix = proj * view,
+        .m_screenSize = { static_cast<float>(backbufferWidth), static_cast<float>(backbufferHeight) }
 	};
 }
 

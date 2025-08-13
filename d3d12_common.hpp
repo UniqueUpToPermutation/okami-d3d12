@@ -76,75 +76,6 @@ namespace okami {
 		}
 	};
 
-	template <typename DataType>
-	class ConstantBuffer {
-	private:
-		ComPtr<ID3D12Resource> m_buffer;
-
-	public:
-		static Expected<ConstantBuffer> Create(ID3D12Device& device) {
-			ConstantBuffer result;
-
-			size_t byteSize = sizeof(DataType);
-
-			// Calculate the new size of the buffer, ensuring alignment to 256 bytes
-			size_t newBufferSize = (byteSize + 255) & ~255;
-
-			// Release the current buffer
-			result.m_buffer.Reset();
-
-			// Describe the new buffer resource
-			D3D12_HEAP_PROPERTIES heapProperties = {};
-			heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
-			heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-			heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			heapProperties.CreationNodeMask = 1;
-			heapProperties.VisibleNodeMask = 1;
-
-			D3D12_RESOURCE_DESC resourceDesc = {};
-			resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-			resourceDesc.Alignment = 0;
-			resourceDesc.Width = newBufferSize;
-			resourceDesc.Height = 1;
-			resourceDesc.DepthOrArraySize = 1;
-			resourceDesc.MipLevels = 1;
-			resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
-			resourceDesc.SampleDesc.Count = 1;
-			resourceDesc.SampleDesc.Quality = 0;
-			resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-			resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-			// Recreate the buffer resource
-			HRESULT hr = device.CreateCommittedResource(
-				&heapProperties,
-				D3D12_HEAP_FLAG_NONE,
-				&resourceDesc,
-				D3D12_RESOURCE_STATE_GENERIC_READ,
-				nullptr,
-				IID_PPV_ARGS(&result.m_buffer)
-			);
-
-			if (FAILED(hr)) {
-				return std::unexpected(
-					Error("Failed to create constant buffer resource"));
-			}
-
-			return result;
-		}
-
-		Expected<BufferWriteMap<DataType>> Map() const {
-			return BufferWriteMap<DataType>::Map(m_buffer.Get());
-		}
-
-		ID3D12Resource* GetResource() const {
-			return m_buffer.Get();
-		}
-
-		D3D12_GPU_VIRTUAL_ADDRESS GetGPUAddress() const {
-			return m_buffer->GetGPUVirtualAddress();
-		}
-	};
-
 	struct Sizer {
 	public:
 		double m_weightedSize = 0.0;
@@ -186,20 +117,36 @@ namespace okami {
 		}
 	};
 
+	enum class UploadBufferType {
+		Constant,
+		Structured,
+		Vertex
+	};
+
 	template <typename InstanceType>
-	class StructuredBuffer {
+	class UploadBuffer {
 	private:
 		ComPtr<ID3D12Resource> m_buffer;
 		Sizer m_sizer;
+		UploadBufferType m_type;
 
 	public:
+		UploadBufferType GetType() const {
+			return m_type;
+		}
+
 		size_t SizeOf(size_t elementCount) const {
 			// Structured buffers don't need 256-byte alignment like constant buffers
 			return elementCount * sizeof(InstanceType);
 		}
 
 		Error Resize(ID3D12Device& device, size_t elementCount) {
+			// Calculate the new size of the buffer
+			// ensuring alignment to 256 bytes for constant buffers
 			size_t newBufferSize = SizeOf(elementCount);
+			if (m_type == UploadBufferType::Constant) {
+				newBufferSize = (newBufferSize + 255) & ~255;
+			}
 
 			// Get the current buffer size
 			if (m_buffer) {
@@ -257,10 +204,12 @@ namespace okami {
 			return {};
 		}
 
-		static Expected<StructuredBuffer<InstanceType>> Create(
+		static Expected<UploadBuffer<InstanceType>> Create(
 			ID3D12Device& device,
+			UploadBufferType type,
 			size_t elementCount = 1) {
-			StructuredBuffer<InstanceType> result;
+			UploadBuffer<InstanceType> result;
+			result.m_type = type;
 			auto err = result.Resize(device, elementCount);
 			if (err.IsError()) {
 				return std::unexpected(err);

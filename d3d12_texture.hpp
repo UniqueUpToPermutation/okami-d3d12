@@ -91,6 +91,14 @@ namespace okami {
             return m_texturesById;
         }
 
+        inline ID3D12DescriptorHeap* GetSrvHeap() const {
+            return m_srvDescriptorPool.GetHeap();
+        }
+
+        inline DescriptorPool const& GetSrvPool() {
+            return m_srvDescriptorPool;
+        }
+
         std::pair<resource_id_t, ResHandle<Texture>> NewResource(
             std::optional<std::string_view> path = std::nullopt);
 

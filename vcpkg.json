@@ -14,10 +14,6 @@
     "tinygltf",
     "yaml-cpp",
     "glm",
-    {
-      "name": "directxtex",
-      "features": [ "dx12" ]
-    },
     "concurrentqueue"
   ]
 }

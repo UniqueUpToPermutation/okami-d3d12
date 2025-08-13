@@ -97,13 +97,15 @@ Error TriangleRenderer::Startup(
     }
 
     for (int i = 0; i < bufferCount; ++i) {
-        auto shaderConstants = ConstantBuffer<hlsl::Globals>::Create(device);
+        auto shaderConstants = UploadBuffer<hlsl::Globals>::Create(
+            device, UploadBufferType::Constant);
         if (!shaderConstants) {
             return shaderConstants.error();
         }
         // Start with an empty structued buffer, because this renderer
 		// will probably not be used
-		auto instanceBuffer = StructuredBuffer<hlsl::Instance>::Create(device, 0);
+		auto instanceBuffer = UploadBuffer<hlsl::Instance>::Create(
+            device, UploadBufferType::Structured, 0);
         if (!instanceBuffer) {
             return instanceBuffer.error();
 		}

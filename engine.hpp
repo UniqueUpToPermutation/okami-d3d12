@@ -429,6 +429,15 @@ namespace okami {
 			return m_interfaces.Query<IResourceManager<T>>();
 		}
 
+		template <typename T>
+		ResHandle<T> Load(std::filesystem::path const& path) {
+			auto resourceManager = GetResourceManager<T>();
+			if (!resourceManager) {
+				throw std::runtime_error("Resource manager for type not found");
+			}
+			return resourceManager->Load(path);
+		}
+
 		std::filesystem::path GetRenderOutputPath(size_t frameIndex);
 
 		/*

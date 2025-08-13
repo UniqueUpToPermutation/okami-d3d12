@@ -86,6 +86,16 @@ Camera Camera::Perspective(
 	};
 }
 
+Camera Camera::Orthographic(
+			float nearZ,
+			float farZ) {
+	return Camera{
+		Projection{OrthographicProjection{ 
+			.m_nearZ = nearZ, 
+			.m_farZ = farZ
+		}}
+	};
+}
 
 Camera Camera::Orthographic(
 			float width,

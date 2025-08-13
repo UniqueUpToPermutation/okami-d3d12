@@ -82,6 +82,10 @@ namespace okami {
 			return Transform(glm::vec3(x, y, z), glm::identity<glm::quat>(), 1.0f);
 		}
 
+		inline static Transform _2D(float x, float y, float rotation = 0.0f, float scale = 1.0f) {
+			return Transform(glm::vec3(x, y, 0.0f), glm::angleAxis(rotation, glm::vec3(0.0f, 0.0f, 1.0f)), scale);
+		}
+
 		static Transform LookAt(
 			glm::vec3 const& eye, 
 			glm::vec3 const& target, 

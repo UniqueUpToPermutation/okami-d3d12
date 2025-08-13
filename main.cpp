@@ -21,33 +21,30 @@ int main(int argc, char const* argv[]) {
         std::cerr << "Engine startup failed: " << err << std::endl;  
     }
 
-	auto meshLoader = engine.GetResourceManager<Mesh>();
-	auto box = meshLoader->Load(GetAssetPath("duck.glb"));
+	auto texture = engine.Load<Texture>(GetTestAssetPath("test.png"));
 
-    auto camera = engine.CreateEntity();
-    engine.AddComponent(camera, 
-        Camera::Perspective(
-            glm::radians(90.0f), 0.1f, 10.0f));
-    engine.AddComponent(camera, Transform::LookAt(
-        glm::vec3(3.0f, 3.0f, 3.0f), 
-        glm::vec3(0.0f, 0.0f, 0.0f), 
-        glm::vec3(0.0f, 1.0f, 0.0f)));
+    auto spriteEntity = engine.CreateEntity();
+    engine.AddComponent(spriteEntity, SpriteComponent{ .m_texture = texture });
+    engine.AddComponent(spriteEntity, Transform::_2D(-200.0f, 0.0f));
+  
+    auto spriteEntity2 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity2, SpriteComponent{ .m_texture = texture });
+    engine.AddComponent(spriteEntity2, Transform::_2D(200.0f, 0.0f, glm::pi<float>() / 2.0f));
 
-    auto boxEntity = engine.CreateEntity();
+    auto spriteEntity3 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity3, SpriteComponent{ .m_texture = texture, .m_color = color::Cyan });
+    engine.AddComponent(spriteEntity3, Transform::_2D(0.0f, 0.0f, glm::pi<float>() / 4.0f));
 
-    auto startTransform = Transform::Scale(0.02f);
+    auto spriteEntity4 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity4, SpriteComponent{ .m_texture = texture, .m_color = color::Magenta });
+    engine.AddComponent(spriteEntity4, Transform::_2D(-500.0f, 0.0f, glm::pi<float>() / 4.0f, 2.0f));
 
-    engine.AddComponent(boxEntity, startTransform);
-    engine.AddComponent(boxEntity, StaticMeshComponent{box});
+    auto spriteEntity5 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity5, SpriteComponent{ .m_texture = texture, .m_color = color::Yellow });
+    engine.AddComponent(spriteEntity5, Transform::_2D(500.0f, 0.0f, glm::pi<float>() / 4.0f, 2.0f));
 
-    engine.AddScript([&](
-        Time const& time,
-		ISignalBus& signalBus,
-		EntityTree& entityTree) {
-        signalBus.UpdateComponent(boxEntity, 
-            startTransform * 
-            Transform::RotateY(static_cast<float>(time.m_totalTime * glm::radians(90.0f))));
-    }, "Rotate Object");
+    auto cameraEntity = engine.CreateEntity();
+    engine.AddComponent(cameraEntity, Camera::Orthographic(-1.0, 1.0));
 
     engine.Run();
 

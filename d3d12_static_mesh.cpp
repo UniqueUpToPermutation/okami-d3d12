@@ -124,12 +124,12 @@ Expected<std::shared_ptr<StaticMeshRenderer>> StaticMeshRenderer::Create(
 
     // Create per-frame data
     for (int i = 0; i < bufferCount; ++i) {
-        auto shaderConstants = ConstantBuffer<hlsl::Globals>::Create(device);
+        auto shaderConstants = UploadBuffer<hlsl::Globals>::Create(device, UploadBufferType::Constant);
         if (!shaderConstants.has_value()) {
             return std::unexpected(shaderConstants.error());
         }
-        
-        auto instanceBuffer = StructuredBuffer<hlsl::Instance>::Create(device, 0);
+
+        auto instanceBuffer = UploadBuffer<hlsl::Instance>::Create(device, UploadBufferType::Structured, 0);
         if (!instanceBuffer.has_value()) {
             return std::unexpected(instanceBuffer.error());
         }

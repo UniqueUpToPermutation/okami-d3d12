@@ -13,13 +13,6 @@
 #include <glog/logging.h>
 #include <wrl/client.h>
 #include <directxtk12/DescriptorHeap.h>
-#include <directxtk12/GraphicsMemory.h>
-#include <directxtk12/GeometricPrimitive.h>
-#include <directxtk12/SpriteBatch.h>
-#include <directxtk12/ResourceUploadBatch.h>
-#include <directxtk12/DirectXHelpers.h>
-#include <directxtk12/PrimitiveBatch.h>
-#include <DirectXTex.h>
 #include <comdef.h>
 
 #include <imgui.h>
@@ -29,13 +22,13 @@
 #include "engine.hpp"
 #include "config.hpp"
 #include "d3d12_descriptor_pool.hpp"
-#include "d3d12_primitive_renderer.hpp"
 #include "d3d12_imgui.hpp"
 #include "d3d12_triangle.hpp"
 #include "d3d12_static_mesh.hpp"
 #include "d3d12_upload.hpp"
 #include "d3d12_mesh.hpp"
 #include "d3d12_texture.hpp"
+#include "d3d12_sprite.hpp"
 
 #include <glog/logging.h>
 
@@ -135,7 +128,8 @@ struct PerFrameData {
 		CD3DX12_RESOURCE_DESC renderTargetDesc = CD3DX12_RESOURCE_DESC::Tex2D(
 			kBackbufferFormat, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
-		CD3DX12_CLEAR_VALUE clearValue(kBackbufferFormat, DirectX::Colors::CornflowerBlue);
+		float color[4] = { 0.25f, 0.25f, 0.75f, 1.0f };
+		CD3DX12_CLEAR_VALUE clearValue(kBackbufferFormat, color);
 		CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
 
 		HRESULT hr = device->CreateCommittedResource(
@@ -203,15 +197,13 @@ private:
 	UINT64 m_currentFrame = 0;
 	RendererConfig m_config;
 
-	std::optional<DirectX::GraphicsMemory> m_graphicsMemory;
-
 	std::optional<DirectX::DescriptorHeap> m_rtvHeap;
 	std::optional<DirectX::DescriptorHeap> m_dsvHeap;
 
+	std::shared_ptr<DescriptorPool> m_srvPool;
+	std::shared_ptr<DescriptorPool> m_samplerPool;
+
 	ComPtr<ID3D12Resource> m_depthStencilBuffer;
-	std::optional<DirectX::SpriteBatch> m_spriteBatch;
-	std::optional<DirectX::ResourceUploadBatch> m_resourceUploadBatch;
-	std::optional<PrimitiveRenderer> m_primitiveRenderer;
 
 	std::unique_ptr<ImGuiImpl> m_imguiImpl;
 
@@ -227,6 +219,7 @@ private:
 	std::shared_ptr<TextureManager> m_textureManager;
 
 	std::shared_ptr<StaticMeshRenderer> m_staticMeshRenderer;
+	std::shared_ptr<SpriteRenderer> m_spriteRenderer;
 
 	IStorageAccessor<Transform>* m_transforms = nullptr;
 	Storage<Camera> m_storage;
@@ -524,22 +517,36 @@ public:
 			return Error("Failed to create D3D12 fence");
 		}
 
-		// Initialize graphics memory before creating triangle
-		m_graphicsMemory = DirectX::GraphicsMemory(m_d3d12Device.Get());
-		m_resourceUploadBatch = DirectX::ResourceUploadBatch(m_d3d12Device.Get());
-
-		m_primitiveRenderer = PrimitiveRenderer::Create(
+		// Create descriptor pools for SRV
+		auto srvPool = DescriptorPool::Create(
 			m_d3d12Device.Get(),
-			GetBackbufferRenderTargetState());
-		if (!m_primitiveRenderer) {
-			return Error("Failed to create PrimitiveRenderer");
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+			64, // Arbitrary size, can be adjusted
+			D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
+		);
+		if (!srvPool) {
+			return Error("Failed to create SRV descriptor pool");
 		}
+		m_srvPool = std::make_shared<DescriptorPool>(std::move(srvPool.value()));
+
+		// Create descriptor pools for samplers
+		auto samplerPool = DescriptorPool::Create(
+			m_d3d12Device.Get(),
+			D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
+			16, // Arbitrary size, can be adjusted
+			D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
+		);
+		if (!samplerPool) {
+			return Error("Failed to create sampler descriptor pool");
+		}
+		m_samplerPool = std::make_shared<DescriptorPool>(std::move(samplerPool.value()));
 
 		// Only create ImGui in windowed mode
 		if (!m_headlessMode) {
 			auto imgui = ImGuiImpl::Create(
 				m_d3d12Device.Get(),
 				m_commandQueue.Get(),
+				m_srvPool,
 				m_window,
 				static_cast<int>(m_perFrameData.size()),
 				GetBackbufferRenderTargetState()
@@ -591,6 +598,20 @@ public:
 		m_staticMeshRenderer = std::move(staticMeshRenderer.value());
 		m_staticMeshRenderer->Register(queryable, handlers);
 
+		// Initialize sprite renderer
+		auto spriteRenderer = SpriteRenderer::Create(
+			*m_d3d12Device.Get(),
+			m_textureManager,
+			m_samplerPool,
+			GetBackbufferRenderTargetState(),
+			static_cast<int>(m_perFrameData.size())
+		);
+		if (!spriteRenderer) {
+			return Error("Failed to create SpriteRenderer");
+		}
+		m_spriteRenderer = std::move(spriteRenderer.value());
+		m_spriteRenderer->Register(queryable, handlers);
+
 		return Error{}; // Success
 	}
 
@@ -605,19 +626,25 @@ public:
 		}
 
 		m_staticMeshRenderer.reset();
-
 		m_triangleRenderer.Shutdown();
 
 		m_imguiImpl.reset();
-		m_primitiveRenderer.reset();
 		m_readbackBuffer.Reset();
 		m_depthStencilBuffer.Reset();
-		m_dsvHeap.reset();
-		m_resourceUploadBatch.reset();
-		m_graphicsMemory.reset();
+
+		m_textureManager.reset();
+		m_meshManager.reset();
+		m_staticMeshRenderer.reset();
+		m_spriteRenderer.reset();
+		
 		m_fence.Reset();
 		m_perFrameData.clear();
+
+		m_srvPool.reset();
+		m_samplerPool.reset();
+		m_dsvHeap.reset();
 		m_rtvHeap.reset();
+
 		m_copyCommandQueue.Reset();
 		m_commandQueue.Reset();
 		m_swapChain.Reset();
@@ -630,7 +657,6 @@ public:
 			}
 		}
 #endif
-
 
 		m_d3d12Device.Reset();
 
@@ -685,6 +711,7 @@ public:
 		result.Union(m_storage.ProcessSignals());
 		result.Union(m_triangleRenderer.ProcessSignals());
 		result.Union(m_staticMeshRenderer->ProcessSignals());
+		result.Union(m_spriteRenderer->ProcessSignals());
 		return result;
 	}
 
@@ -806,6 +833,13 @@ public:
 			*m_transforms
 		);
 
+		m_spriteRenderer->Render(
+			*m_d3d12Device.Get(),
+			*frameData.m_commandList.Get(),
+			globals,
+			*m_transforms
+		);
+
 		// Draw IMGUI if initialized 
 		if (m_imguiImpl && !m_headlessMode) {
 			m_imguiImpl->Render(frameData.m_commandList.Get());
@@ -829,9 +863,6 @@ public:
 		frameData.m_commandList->Close();
 		ID3D12CommandList* cmdLists[] = { frameData.m_commandList.Get() };
 		m_commandQueue->ExecuteCommandLists(1, cmdLists);
-
-		// Submit graphics memory to GPU
-		m_graphicsMemory->Commit(m_commandQueue.Get());
 
 		// Signal the fence for this frame
 		m_commandQueue->Signal(m_fence.Get(), ++m_currentFrame);

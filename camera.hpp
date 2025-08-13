@@ -51,6 +51,9 @@ namespace okami {
 			float nearZ, 
 			float farZ);
 		static Camera Orthographic(
+			float nearZ,
+			float farZ);
+		static Camera Orthographic(
 			float width,
 			float nearZ,
 			float farZ);

@@ -21,8 +21,8 @@ namespace okami {
 	class TriangleRenderer {
 	private:
 		struct PerFrameData {
-			ConstantBuffer<hlsl::Globals> m_globalConstants;
-			StructuredBuffer<hlsl::Instance> m_instanceBuffer;
+			UploadBuffer<hlsl::Globals> m_globalConstants;
+			UploadBuffer<hlsl::Instance> m_instanceBuffer;
 		};
 
 		ComPtr<ID3D12RootSignature> m_rootSignature;

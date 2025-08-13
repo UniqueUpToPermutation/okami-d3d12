@@ -44,7 +44,8 @@ TEST(RendererTest, Triangle) {
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
 
 	if (auto err = engine.Startup(); err.IsError()) {
-		GTEST_ASSERT_TRUE(false) << "Engine startup failed: " << err.Str();
+		FAIL() << "Engine startup failed: " << err;
+		return;
 	}
 
 	// Render a triangle
@@ -64,7 +65,8 @@ TEST(RendererTest, TwoTriangles) {
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
 
 	if (auto err = engine.Startup(); err.IsError()) {
-		GTEST_ASSERT_TRUE(false) << "Engine startup failed: " << err.Str();
+		FAIL() << "Engine startup failed: " << err;
+		return;
 	}
 
 	// Create the world
@@ -101,7 +103,8 @@ TEST(RendererTest, Cube) {
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
 
     if (auto err = engine.Startup(); err.IsError()) {  
-        std::cerr << "Engine startup failed: " << err << std::endl;  
+        FAIL() << "Engine startup failed: " << err;
+		return;
     }
 
 	auto meshLoader = engine.GetResourceManager<Mesh>();
@@ -128,6 +131,55 @@ TEST(RendererTest, Cube) {
 	} while (!box.IsLoaded());
 
 	// Render a single frame
+    engine.Run(1);
+
+	// Check correctness
+	CompareImages(engine);
+}
+
+TEST(RendererTest, Sprites) {
+	std::vector <const char*> argsv;
+	Engine engine{ GetTestEngineParams(argsv, "render_sprite") };
+	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+
+    if (auto err = engine.Startup(); err.IsError()) {  
+        FAIL() << "Engine startup failed: " << err;
+		return;
+    }
+
+	auto texture = engine.Load<Texture>(GetTestAssetPath("test.png"));
+
+    auto spriteEntity = engine.CreateEntity();
+    engine.AddComponent(spriteEntity, SpriteComponent{ .m_texture = texture });
+    engine.AddComponent(spriteEntity, Transform::_2D(-200.0f, 0.0f));
+  
+    auto spriteEntity2 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity2, SpriteComponent{ .m_texture = texture });
+    engine.AddComponent(spriteEntity2, Transform::_2D(200.0f, 0.0f, glm::pi<float>() / 2.0f));
+
+    auto spriteEntity3 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity3, SpriteComponent{ .m_texture = texture, .m_color = color::Cyan });
+    engine.AddComponent(spriteEntity3, Transform::_2D(0.0f, 0.0f, glm::pi<float>() / 4.0f));
+
+    auto spriteEntity4 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity4, SpriteComponent{ .m_texture = texture, .m_color = color::Magenta });
+    engine.AddComponent(spriteEntity4, Transform::_2D(-500.0f, 0.0f, glm::pi<float>() / 4.0f, 2.0f));
+
+    auto spriteEntity5 = engine.CreateEntity();
+    engine.AddComponent(spriteEntity5, SpriteComponent{ .m_texture = texture, .m_color = color::Yellow });
+    engine.AddComponent(spriteEntity5, Transform::_2D(500.0f, 0.0f, glm::pi<float>() / 4.0f, 2.0f));
+
+    auto cameraEntity = engine.CreateEntity();
+    engine.AddComponent(cameraEntity, Camera::Orthographic(-1.0, 1.0));
+
+	// Wait for the texture to be loaded
+	// otherwise the renderer will not be able to render it
+	do {
+		engine.UploadResources();
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	} while (!texture.IsLoaded());
+
+    // Render a single frame
     engine.Run(1);
 
 	// Check correctness
