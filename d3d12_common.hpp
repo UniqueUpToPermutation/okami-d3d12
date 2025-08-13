@@ -129,6 +129,7 @@ namespace okami {
 		ComPtr<ID3D12Resource> m_buffer;
 		Sizer m_sizer;
 		UploadBufferType m_type;
+		std::wstring_view m_name;
 
 	public:
 		UploadBufferType GetType() const {
@@ -196,6 +197,7 @@ namespace okami {
 				nullptr,
 				IID_PPV_ARGS(&m_buffer)
 			);
+			m_buffer->SetName(m_name.data());
 
 			if (FAILED(hr)) {
 				return Error("Failed to create structured buffer resource");
@@ -207,9 +209,11 @@ namespace okami {
 		static Expected<UploadBuffer<InstanceType>> Create(
 			ID3D12Device& device,
 			UploadBufferType type,
+			std::wstring_view name = L"Upload Buffer",
 			size_t elementCount = 1) {
 			UploadBuffer<InstanceType> result;
 			result.m_type = type;
+			result.m_name = name;
 			auto err = result.Resize(device, elementCount);
 			if (err.IsError()) {
 				return std::unexpected(err);

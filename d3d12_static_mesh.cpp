@@ -126,12 +126,14 @@ Expected<std::shared_ptr<StaticMeshRenderer>> StaticMeshRenderer::Create(
 
     // Create per-frame data
     for (int i = 0; i < bufferCount; ++i) {
-        auto shaderConstants = UploadBuffer<hlsl::Globals>::Create(device, UploadBufferType::Constant);
+        auto shaderConstants = UploadBuffer<hlsl::Globals>::Create(
+            device, UploadBufferType::Constant, L"Static Mesh Constants Buffer");
         if (!shaderConstants.has_value()) {
             return std::unexpected(shaderConstants.error());
         }
 
-        auto instanceBuffer = UploadBuffer<hlsl::Instance>::Create(device, UploadBufferType::Structured, 0);
+        auto instanceBuffer = UploadBuffer<hlsl::Instance>::Create(
+            device, UploadBufferType::Structured, L"Static Mesh Instance Buffer", 0);
         if (!instanceBuffer.has_value()) {
             return std::unexpected(instanceBuffer.error());
         }
@@ -179,7 +181,6 @@ Error StaticMeshRenderer::Render(
     auto const& meshesById = m_manager->GetMeshes();
 
     // Fill instance data for all static mesh entities
-    int index = 0;
     for (auto const& [entity, staticMeshComponent] : staticMeshes) {
         // Get transform for this entity
         auto transform = transforms.GetOr(entity, Transform::Identity());
@@ -220,8 +221,9 @@ Error StaticMeshRenderer::Render(
         }
 
         // Write instance data to buffer
+        int index = 0;
         for (auto const& [meshPtr, instance] : instanceData) {
-            map->At(index) = hlsl::Instance{
+            map->At(index++) = hlsl::Instance{
                 .m_worldMatrix = instance.m_worldMatrix,
                 .m_worldInverseTransposeMatrix = instance.m_worldInverseTransposeMatrix
             };
@@ -233,7 +235,6 @@ Error StaticMeshRenderer::Render(
     commandList.SetGraphicsRootSignature(m_rootSignature.Get());
     commandList.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList.SetGraphicsRootConstantBufferView(0, globalConstantsBuffer.GetGPUAddress());
-    commandList.SetGraphicsRootShaderResourceView(1, instanceBuffer.GetGPUAddress());
 
     UINT firstInstance = 0;
     for (auto beginIt = instanceData.begin(); beginIt != instanceData.end();) {
@@ -252,6 +253,8 @@ Error StaticMeshRenderer::Render(
 
         // Count instances of this mesh
         UINT instanceCount = static_cast<UINT>(endIt - beginIt);
+
+        commandList.SetGraphicsRootShaderResourceView(1, instanceBuffer.GetGPUAddress() + sizeof(hlsl::Instance) * firstInstance);
 
         // Draw with or without index buffer
         if (meshData->m_private.m_indexBuffer.GetResource() && meshData->m_private.m_indexCount > 0) {

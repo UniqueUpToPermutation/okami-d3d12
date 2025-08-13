@@ -142,13 +142,15 @@ Expected<std::shared_ptr<SpriteRenderer>> SpriteRenderer::Create(
     // Initialize per-frame data
     renderer->m_perFrameData.resize(bufferCount);
     for (int i = 0; i < bufferCount; ++i) {
-        auto globalConstantsResult = UploadBuffer<hlsl::Globals>::Create(device, UploadBufferType::Constant);
+        auto globalConstantsResult = UploadBuffer<hlsl::Globals>::Create(
+            device, UploadBufferType::Constant, L"Sprite Global Constants Buffer");
         if (!globalConstantsResult) {
             return std::unexpected(Error("Failed to create global constants buffer: " + globalConstantsResult.error().Str()));
         }
         renderer->m_perFrameData[i].m_globalConstants = std::move(globalConstantsResult.value());
 
-        auto instanceBufferResult = UploadBuffer<hlsl::SpriteInstance>::Create(device, UploadBufferType::Vertex, 1);
+        auto instanceBufferResult = UploadBuffer<hlsl::SpriteInstance>::Create(
+            device, UploadBufferType::Vertex, L"Sprite Instance Buffer", 0);
         if (!instanceBufferResult) {
             return std::unexpected(Error("Failed to create instance buffer: " + instanceBufferResult.error().Str()));
         }

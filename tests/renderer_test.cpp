@@ -137,6 +137,51 @@ TEST(RendererTest, Cube) {
 	CompareImages(engine);
 }
 
+TEST(RendererTest, TwoMeshes) {
+	std::vector <const char*> argsv;
+	Engine engine{ GetTestEngineParams(argsv, "render_two_meshes") };
+	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+
+    if (auto err = engine.Startup(); err.IsError()) {  
+        FAIL() << "Engine startup failed: " << err;
+		return;
+    }
+
+	auto meshLoader = engine.GetResourceManager<Mesh>();
+	auto box = meshLoader->Load(GetTestAssetPath("box.glb"));
+	auto torus = meshLoader->Load(GetTestAssetPath("torus.glb"));
+
+    auto camera = engine.CreateEntity();
+    engine.AddComponent(camera, 
+        Camera::Perspective(
+            glm::radians(90.0f), 0.1f, 10.0f));
+    engine.AddComponent(camera, Transform::LookAt(
+        glm::vec3(1.5f, 1.5f, 1.5f), 
+        glm::vec3(0.0f, 0.0f, 0.0f), 
+        glm::vec3(0.0f, 1.0f, 0.0f)));
+
+    auto boxEntity = engine.CreateEntity();
+    engine.AddComponent(boxEntity, StaticMeshComponent{box});
+	engine.AddComponent(boxEntity, Transform::Translate(1.0f, 0.0f, 0.0f));
+
+	auto torusEntity = engine.CreateEntity();
+	engine.AddComponent(torusEntity, StaticMeshComponent{torus});
+	engine.AddComponent(torusEntity, Transform::Translate(-1.0f, 0.0f, 0.0f));
+
+	// Wait for the box mesh to be loaded,
+	// otherwise the renderer will not be able to render it
+	do {
+		engine.UploadResources();
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	} while (!box.IsLoaded() || !torus.IsLoaded());
+
+	// Render a single frame
+    engine.Run(1);
+
+	// Check correctness
+	CompareImages(engine);
+}
+
 TEST(RendererTest, Sprites) {
 	std::vector <const char*> argsv;
 	Engine engine{ GetTestEngineParams(argsv, "render_sprite") };

@@ -100,14 +100,14 @@ Error TriangleRenderer::Startup(
 
     for (int i = 0; i < bufferCount; ++i) {
         auto shaderConstants = UploadBuffer<hlsl::Globals>::Create(
-            device, UploadBufferType::Constant);
+            device, UploadBufferType::Constant, L"Triangle Constants Buffer");
         if (!shaderConstants) {
             return shaderConstants.error();
         }
         // Start with an empty structued buffer, because this renderer
 		// will probably not be used
 		auto instanceBuffer = UploadBuffer<hlsl::Instance>::Create(
-            device, UploadBufferType::Structured, 0);
+            device, UploadBufferType::Structured, L"Triangle Instance Buffer", 0);
         if (!instanceBuffer) {
             return instanceBuffer.error();
 		}
