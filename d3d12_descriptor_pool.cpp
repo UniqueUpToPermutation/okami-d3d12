@@ -39,6 +39,7 @@ std::expected<DescriptorPool, Error> DescriptorPool::Create(
 	if (FAILED(hr) || !pool.m_heap) {
 		return std::unexpected(Error("Failed to create descriptor heap: " + std::to_string(hr)));
 	}
+	pool.m_heap->SetName(L"Okami D3D12 Descriptor Pool");
 
 	// Initialize heap properties
 	pool.m_heapStartCpu = pool.m_heap->GetCPUDescriptorHandleForHeapStart();

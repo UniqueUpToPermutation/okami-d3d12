@@ -41,7 +41,7 @@ struct GpuUploaderImpl {
 
     static Expected<std::unique_ptr<GpuUploaderImpl, GpuUploaderImplDelete>> Create(ID3D12Device& device) { 
         auto uploader = std::unique_ptr<GpuUploaderImpl, GpuUploaderImplDelete>(new GpuUploaderImpl());
-        uploader->m_device = ComPtr<ID3D12Device>(&device);
+        uploader->m_device = &device;
 
         // Create fence for synchronization
         HRESULT hr = device.CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&uploader->m_fence));

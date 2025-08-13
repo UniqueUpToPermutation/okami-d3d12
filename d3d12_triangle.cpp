@@ -37,10 +37,12 @@ Expected<ComPtr<ID3D12RootSignature>> TriangleRenderer::CreateRootSignature(ID3D
         return std::unexpected(errorMsg);
     }
 
-    hr = device.CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
+    hr = device.CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(rootSignature.GetAddressOf()));
     if (FAILED(hr)) {
         return std::unexpected(Error("Failed to create root signature"));
     }
+
+    rootSignature->SetName(L"TriangleRenderer Root Signature");
 
     return rootSignature; // Success
 }
@@ -67,7 +69,7 @@ Error TriangleRenderer::Startup(
     if (!rootSignature) {
         return rootSignature.error();
     }
-	m_rootSignature = std::move(rootSignature.value());
+	m_rootSignature = rootSignature.value();
 
     // Define the graphics pipeline state object description
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};

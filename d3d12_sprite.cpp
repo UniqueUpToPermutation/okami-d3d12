@@ -61,6 +61,7 @@ Expected<ComPtr<ID3D12RootSignature>> SpriteRenderer::CreateRootSignature(ID3D12
     if (FAILED(hr)) {
         return std::unexpected(Error("Failed to create root signature: " + std::to_string(hr)));
     }
+    rootSignature->SetName(L"SpriteRenderer Root Signature");
 
     return rootSignature;
 }
@@ -169,7 +170,7 @@ Expected<std::shared_ptr<SpriteRenderer>> SpriteRenderer::Create(
     samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
     samplerDesc.MipLODBias = 0.0f;
     samplerDesc.MaxAnisotropy = 1;
-    samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
 
     device.CreateSampler(&samplerDesc, renderer->m_samplerPool->GetCpuHandle(renderer->m_samplerHandle));
 

@@ -62,6 +62,8 @@ Expected<ComPtr<ID3D12RootSignature>> StaticMeshRenderer::CreateRootSignature(ID
         return std::unexpected(Error("Failed to create root signature"));
     }
 
+    rootSignature->SetName(L"StaticMeshRenderer Root Signature");
+
     return rootSignature;
 }
 

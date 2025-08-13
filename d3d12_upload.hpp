@@ -54,9 +54,9 @@ namespace okami {
             UINT64 fenceValue,
             ComPtr<ID3D12Fence> fenceToSignal)
             : m_uploader(uploader),
-              m_commandList(std::move(commandList)),
+              m_commandList(commandList),
               m_fenceValue(fenceValue),
-              m_fenceToSignal(std::move(fenceToSignal)) {}
+              m_fenceToSignal(fenceToSignal) {}
 
         inline GpuUploaderCommandListLock(GpuUploaderCommandListLock&& other) {
             m_commandList = std::move(other.m_commandList);

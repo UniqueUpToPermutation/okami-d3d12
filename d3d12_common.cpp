@@ -32,7 +32,7 @@ std::expected<ComPtr<ID3DBlob>, Error> okami::LoadShaderFromFile(std::filesystem
         return std::unexpected(Error("Failed to read shader file: " + shaderPath));
     }
 
-    HRESULT hr = D3DCreateBlob(m_size, &shaderBlob);
+    HRESULT hr = D3DCreateBlob(m_size, shaderBlob.GetAddressOf());
     if (FAILED(hr)) {
         return std::unexpected(Error("Failed to create blob for shader: " + shaderPath));
     }

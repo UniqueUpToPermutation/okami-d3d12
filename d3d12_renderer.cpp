@@ -79,7 +79,7 @@ struct PerFrameData {
 
 		// 1. Get the back buffer from the swap chain
 		ComPtr<ID3D12Resource> renderTarget;
-		HRESULT hr = swapChain->GetBuffer(m_bufferIndex, IID_PPV_ARGS(renderTarget.GetAddressOf()));
+		HRESULT hr = swapChain->GetBuffer(m_bufferIndex, IID_PPV_ARGS(&renderTarget));
 		if (FAILED(hr) || !renderTarget) {
 			return std::unexpected(Error("Failed to get swap chain buffer for render target"));
 		}
@@ -93,11 +93,12 @@ struct PerFrameData {
 		// 3. Create command allocator for this frame
 		hr = device->CreateCommandAllocator(
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
-			IID_PPV_ARGS(frameData.m_commandAllocator.GetAddressOf())
+			IID_PPV_ARGS(&frameData.m_commandAllocator)
 		);
 		if (FAILED(hr) || !frameData.m_commandAllocator) {
 			return std::unexpected(Error("Failed to create command allocator for frame"));
 		}
+		frameData.m_commandAllocator->SetName(L"Okami D3D12 Command Allocator");
 
 		// 4. Create command list for this frame
 		hr = device->CreateCommandList(
@@ -105,11 +106,12 @@ struct PerFrameData {
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
 			frameData.m_commandAllocator.Get(),
 			nullptr,
-			IID_PPV_ARGS(frameData.m_commandList.GetAddressOf())
+			IID_PPV_ARGS(&frameData.m_commandList)
 		);
 		if (FAILED(hr) || !frameData.m_commandList) {
 			return std::unexpected(Error("Failed to create command list for frame"));
 		}
+		frameData.m_commandList->SetName(L"Okami D3D12 Command List");
 		frameData.m_commandList->Close();
 
 		return frameData;
@@ -138,7 +140,7 @@ struct PerFrameData {
 			&renderTargetDesc,
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
 			&clearValue,
-			IID_PPV_ARGS(frameData.m_renderTarget.GetAddressOf())
+			IID_PPV_ARGS(&frameData.m_renderTarget)
 		);
 		if (FAILED(hr) || !frameData.m_renderTarget) {
 			return std::unexpected(Error("Failed to create offscreen render target"));
@@ -151,7 +153,7 @@ struct PerFrameData {
 		// 3. Create command allocator for this frame
 		hr = device->CreateCommandAllocator(
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
-			IID_PPV_ARGS(frameData.m_commandAllocator.GetAddressOf())
+			IID_PPV_ARGS(&frameData.m_commandAllocator)
 		);
 		if (FAILED(hr) || !frameData.m_commandAllocator) {
 			return std::unexpected(Error("Failed to create command allocator for frame"));
@@ -163,7 +165,7 @@ struct PerFrameData {
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
 			frameData.m_commandAllocator.Get(),
 			nullptr,
-			IID_PPV_ARGS(frameData.m_commandList.GetAddressOf())
+			IID_PPV_ARGS(&frameData.m_commandList)
 		);
 		if (FAILED(hr) || !frameData.m_commandList) {
 			return std::unexpected(Error("Failed to create command list for frame"));
@@ -315,42 +317,39 @@ public:
 		HRESULT hr = D3D12CreateDevice(
 			nullptr, // default adapter
 			D3D_FEATURE_LEVEL_12_0,
-			IID_PPV_ARGS(&d3d12Device)
+			IID_PPV_ARGS(&m_d3d12Device)
 		);
-		if (FAILED(hr) || !d3d12Device) {
+		if (FAILED(hr) || !m_d3d12Device) {
 			LOG(ERROR) << _com_error(hr).ErrorMessage();
 			return Error("Failed to create D3D12 device!");
 		}
-
-		m_d3d12Device = ComPtr<ID3D12Device>(d3d12Device);
+		m_d3d12Device->SetName(L"Okami D3D12 Device");
 
 		// Create command queue
 		D3D12_COMMAND_QUEUE_DESC queueDesc = {};
 		queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 		queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-		ID3D12CommandQueue* commandQueueRaw = nullptr;
-		HRESULT hrQueue = m_d3d12Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueueRaw));
-		if (FAILED(hrQueue) || !commandQueueRaw) {
+		HRESULT hrQueue = m_d3d12Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue));
+		if (FAILED(hrQueue) || !m_commandQueue) {
 			LOG(ERROR) << _com_error(hr).ErrorMessage();
 			return Error("Failed to create D3D12 command queue");
 		}
-		m_commandQueue = ComPtr<ID3D12CommandQueue>(commandQueueRaw);
+		m_commandQueue->SetName(L"Okami D3D12 Command Queue");
 
 		// Create copy command queue
 		D3D12_COMMAND_QUEUE_DESC copyQueueDesc = {};
 		copyQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 		copyQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-		ID3D12CommandQueue* copyCommandQueueRaw = nullptr;
-		HRESULT hrCopyQueue = m_d3d12Device->CreateCommandQueue(&copyQueueDesc, IID_PPV_ARGS(&copyCommandQueueRaw));
-		if (FAILED(hrCopyQueue) || !copyCommandQueueRaw) {
+		HRESULT hrCopyQueue = m_d3d12Device->CreateCommandQueue(&copyQueueDesc, IID_PPV_ARGS(&m_copyCommandQueue));
+		if (FAILED(hrCopyQueue) || !m_copyCommandQueue) {
 			return Error("Failed to create D3D12 copy command queue");
 		}
-		m_copyCommandQueue = ComPtr<ID3D12CommandQueue>(copyCommandQueueRaw);
+		m_copyCommandQueue->SetName(L"Okami D3D12 Copy Command Queue");
 
 		if (!m_headlessMode) {
 			// Create swap chain for windowed mode
 			ComPtr<IDXGIFactory7> dxgiFactory;
-			HRESULT hrFactory = CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.GetAddressOf()));
+			HRESULT hrFactory = CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
 			if (FAILED(hrFactory)) {
 				LOG(ERROR) << _com_error(hrFactory).ErrorMessage();
 				return Error("Failed to create DXGI factory");
@@ -388,12 +387,10 @@ public:
 				return Error("Failed to create swap chain");
 			}
 
-			IDXGISwapChain3* swapChain3 = nullptr;
-			hr = swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain3));
-			if (FAILED(hr) || !swapChain3) {
+			hr = swapChain1->QueryInterface(IID_PPV_ARGS(&m_swapChain));
+			if (FAILED(hr) || !m_swapChain) {
 				return Error("Failed to query IDXGISwapChain3");
 			}
-			m_swapChain = ComPtr<IDXGISwapChain3>(swapChain3);
 		}
 
 		// Create descriptor heap for RTVs
@@ -448,6 +445,7 @@ public:
 		if (FAILED(hr)) {
 			return Error("Failed to create depth stencil buffer");
 		}
+		m_depthStencilBuffer->SetName(L"Okami D3D12 Depth Stencil Buffer");
 
 		// Create depth stencil view
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
@@ -505,17 +503,19 @@ public:
 			if (FAILED(hr)) {
 				return Error("Failed to create readback buffer");
 			}
+			m_readbackBuffer->SetName(L"Okami D3D12 Readback Buffer");
 		}
 
 		// Create fence for GPU synchronization
 		hr = m_d3d12Device->CreateFence(
 			0, // Initial value
 			D3D12_FENCE_FLAG_NONE,
-			IID_PPV_ARGS(m_fence.GetAddressOf())
+			IID_PPV_ARGS(&m_fence)
 		);
 		if (FAILED(hr) || !m_fence) {
 			return Error("Failed to create D3D12 fence");
 		}
+		m_fence->SetName(L"Okami D3D12 Fence");
 
 		// Create descriptor pools for SRV
 		auto srvPool = DescriptorPool::Create(
@@ -616,14 +616,22 @@ public:
 	}
 
 	void Shutdown(IInterfaceQueryable& queryable, ISignalBus& eventBus) override {
+		// Signal the fence one last time
+		m_commandQueue->Signal(m_fence.Get(), ++m_currentFrame);
+
+		// Wait for GPU to be finished with resources
+		if (m_fence->GetCompletedValue() < m_currentFrame) {
+			m_fence->SetEventOnCompletion(m_currentFrame, m_eventHandle);
+			WaitForSingleObject(m_eventHandle, INFINITE);
+		}
+
+		if (m_eventHandle) {
+			CloseHandle(m_eventHandle);
+			m_eventHandle = NULL;
+		}
+
 		m_uploader->Stop();
 		m_uploader.reset();
-		
-		for (auto& frameData : m_perFrameData) {
-			frameData.WaitOnFence(m_fence.Get(), m_eventHandle);
-			frameData.m_commandAllocator->Reset();
-			frameData.m_commandList->Reset(frameData.m_commandAllocator.Get(), nullptr);
-		}
 
 		m_staticMeshRenderer.reset();
 		m_triangleRenderer.Shutdown();
@@ -647,18 +655,27 @@ public:
 
 		m_copyCommandQueue.Reset();
 		m_commandQueue.Reset();
+
 		m_swapChain.Reset();
 
 #ifndef NDEBUG
+		ComPtr<ID3D12DebugDevice> debugDevice;
 		if (m_d3d12Device) {
-			ComPtr<ID3D12DebugDevice> debugDevice;
-			if (SUCCEEDED(m_d3d12Device->QueryInterface(IID_PPV_ARGS(&debugDevice)))) {
-				debugDevice->ReportLiveDeviceObjects(D3D12_RLDO_DETAIL);
+			HRESULT hr = m_d3d12Device->QueryInterface(IID_PPV_ARGS(&debugDevice));
+			if (FAILED(hr)) {
+				LOG(ERROR) << "Failed to get ID3D12DebugDevice interface";
 			}
 		}
 #endif
 
 		m_d3d12Device.Reset();
+
+#ifndef NDEBUG
+		if (debugDevice) {
+			debugDevice->ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
+			debugDevice.Reset();
+		}
+#endif
 
 		if (!m_headlessMode) {
 			if (m_window) {
@@ -666,11 +683,6 @@ public:
 				m_window = nullptr;
 			}
 			glfwTerminate();
-		}
-
-		if (m_eventHandle) {
-			CloseHandle(m_eventHandle);
-			m_eventHandle = NULL;
 		}
 	}
 
