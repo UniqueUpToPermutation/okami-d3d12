@@ -46,16 +46,27 @@ namespace okami {
 		ResHandle<Mesh> m_mesh;
 	};
 
-	struct Rectangle {
-		uint32_t m_x = 0;
-		uint32_t m_y = 0;
-		uint32_t m_width = 0;
-		uint32_t m_height = 0;
+	struct Rect {
+		glm::vec2 m_position = glm::vec2(0.0f, 0.0f);
+		glm::vec2 m_size = glm::vec2(0.0f, 0.0f);
+
+		inline glm::vec2 GetMin() const {
+			return m_position;
+		}
+
+		inline glm::vec2 GetMax() const {
+			return m_position + m_size;
+		}
+
+		inline glm::vec2 GetSize() const {
+			return m_size;
+		}
 	};
 
 	struct SpriteComponent {
 		ResHandle<Texture> m_texture;
 		std::optional<glm::vec2> m_origin;
+		std::optional<Rect> m_sourceRect;
 		Color m_color = color::White;
 		int m_layer = 0;
 	};

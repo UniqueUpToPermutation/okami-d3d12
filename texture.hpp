@@ -6,6 +6,8 @@
 
 #include "common.hpp"
 
+#include <glm/vec2.hpp>
+
 namespace okami {
     enum class TextureType {
         TEXTURE_1D,
@@ -75,6 +77,10 @@ namespace okami {
         inline uint32_t GetDepth() const { return m_info.depth; }
         inline uint32_t GetArraySize() const { return m_info.arraySize; }
         inline uint32_t GetMipLevels() const { return m_info.mipLevels; }
+
+        inline glm::vec2 GetSize() const {
+            return glm::vec2(static_cast<float>(m_info.width), static_cast<float>(m_info.height));
+        }
 
         using CreationData = RawTexture;
     };

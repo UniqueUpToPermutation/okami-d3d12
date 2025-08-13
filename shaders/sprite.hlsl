@@ -16,6 +16,8 @@ struct GSInput
     float4 dx : COLOR0;
     float4 dy : COLOR1;
     float4 color : COLOR2;
+    float2 uv0 : TEXCOORD0;
+    float2 uv1 : TEXCOORD1;
 };
 
 struct PSInput
@@ -48,6 +50,9 @@ GSInput VSMain(SpriteInstance input)
     
     result.color = input.color;
 
+    result.uv0 = input.uv0;
+    result.uv1 = input.uv1;
+
     return result;
 }
 
@@ -55,22 +60,22 @@ GSInput VSMain(SpriteInstance input)
 void GSMain(point GSInput input[1], inout TriangleStream<PSInput> output) {
     PSInput v0;
     v0.position = input[0].position;
-    v0.uv = float2(0.0, 1.0);
+    v0.uv = float2(input[0].uv0.x, input[0].uv1.y);
     v0.color = input[0].color;
 
     PSInput v1;
     v1.position = input[0].position + input[0].dx;
-    v1.uv = float2(1.0, 1.0);
+    v1.uv = float2(input[0].uv1.x, input[0].uv1.y);
     v1.color = input[0].color;
 
     PSInput v2;
     v2.position = input[0].position + input[0].dy;
-    v2.uv = float2(0.0, 0.0);
+    v2.uv = float2(input[0].uv0.x, input[0].uv0.y);
     v2.color = input[0].color;
 
     PSInput v3;
     v3.position = input[0].position + input[0].dx + input[0].dy;
-    v3.uv = float2(1.0, 0.0);
+    v3.uv = float2(input[0].uv1.x, input[0].uv0.y);
     v3.color = input[0].color;
 
     output.Append(v0);

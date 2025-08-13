@@ -9,6 +9,16 @@
 using namespace okami;
 using namespace DirectX;
 
+constexpr D3D12_INPUT_ELEMENT_DESC kInputLayout[] = {
+    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    { "ROTATION", 0, DXGI_FORMAT_R32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    { "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    { "ORIGIN", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+};
+
 Expected<ComPtr<ID3D12RootSignature>> SpriteRenderer::CreateRootSignature(ID3D12Device& device)
 {
     // Define root parameters
@@ -90,16 +100,8 @@ Expected<std::shared_ptr<SpriteRenderer>> SpriteRenderer::Create(
     }
 
     // Create pipeline state
-    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "ROTATION", 0, DXGI_FORMAT_R32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "ORIGIN", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-    };
-    
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+    psoDesc.InputLayout = { kInputLayout, _countof(kInputLayout) };
     psoDesc.pRootSignature = renderer->m_rootSignature.Get();
     psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader->Get());
     psoDesc.GS = CD3DX12_SHADER_BYTECODE(geometryShader->Get());
@@ -275,11 +277,22 @@ Error SpriteRenderer::Render(
             instanceData.position = { instance.m_transform.m_position.x, instance.m_transform.m_position.y, instance.m_transform.m_position.z };
             float rotation = static_cast<float>(2.0 * glm::atan(instance.m_transform.m_rotation.z, instance.m_transform.m_rotation.w));
             glm::vec2 scale{instance.m_transform.m_scaleShear[0][0], instance.m_transform.m_scaleShear[1][1]};
-            glm::vec2 imageSize = scale * glm::vec2(instance.m_sprite.m_texture->GetWidth(), instance.m_sprite.m_texture->GetHeight());
+            glm::vec2 imageSize;
+        
+            if (instance.m_sprite.m_sourceRect) {
+                imageSize = instance.m_sprite.m_sourceRect->GetSize();
+                auto textureSize = instance.m_sprite.m_texture->GetSize();
+                instanceData.uv0 = instance.m_sprite.m_sourceRect->GetMin() / textureSize;
+                instanceData.uv1 = instance.m_sprite.m_sourceRect->GetMax() / textureSize;
+            } else {
+                imageSize = instance.m_sprite.m_texture->GetSize();
+                instanceData.uv0 = glm::vec2(0.0f, 0.0f);
+                instanceData.uv1 = glm::vec2(1.0f, 1.0f);
+            }
 
-            instanceData.origin = instance.m_sprite.m_origin.value_or(imageSize / 2.0f);
-            instanceData.size = imageSize;
-            instanceData.color = instance.m_sprite.m_color; // Default to white, could be extended
+            instanceData.origin = scale * instance.m_sprite.m_origin.value_or(imageSize / 2.0f);
+            instanceData.size = scale * imageSize;
+            instanceData.color = instance.m_sprite.m_color;
             instanceData.rotation = rotation;
 
             // Update instance buffer 
@@ -299,7 +312,6 @@ Error SpriteRenderer::Render(
         // Bind texture
         auto textureHandle = batchBegin->m_texture->m_private.m_handle;
         commandList.SetGraphicsRootDescriptorTable(1, m_textureManager->GetSrvPool().GetGpuHandle(textureHandle));
-
         commandList.DrawInstanced(batchSize, 1, 0, 0);
 
         batchBegin = batchEnd;
