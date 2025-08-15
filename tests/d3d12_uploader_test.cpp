@@ -1,7 +1,7 @@
 #include "d3d12_utils.hpp"
 
 #include "../d3d12_upload.hpp"
-#include "../d3d12_mesh.hpp"
+#include "../d3d12_geometry.hpp"
 #include "../d3d12_texture.hpp"
 #include "../paths.hpp"
 
@@ -164,7 +164,7 @@ TEST_F(D3D12Test, UploaderMesh) {
     ASSERT_TRUE(uploaderResult.has_value()) << "Failed to create GPU uploader: " << uploaderResult.error().Str();
 
     auto uploader = std::make_shared<GpuUploader>(std::move(uploaderResult.value()));
-    MeshManager manager(uploader);
+    GeometryManager manager(uploader);
 
     auto pathValid = GetTestAssetPath("box.glb");
     auto pathInvalid = GetTestAssetPath("nonexistant.glb");

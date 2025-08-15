@@ -6,14 +6,12 @@
 #include "d3d12_common.hpp"
 #include "d3d12_upload.hpp"
 #include "storage.hpp"
-#include "d3d12_mesh.hpp"
+#include "d3d12_geometry.hpp"
 
 namespace okami {
-	VertexFormat GetStaticMeshFormat();
-
 	class StaticMeshRenderer {
 	private:
-		std::shared_ptr<MeshManager> m_manager;
+		std::shared_ptr<GeometryManager> m_manager;
 
 		Storage<StaticMeshComponent> m_staticMeshStorage;
 
@@ -49,7 +47,7 @@ namespace okami {
 
 		static Expected<std::shared_ptr<StaticMeshRenderer>> Create(
 			ID3D12Device& device,
-			std::shared_ptr<MeshManager> manager,
+			std::shared_ptr<GeometryManager> manager,
 			DirectX::RenderTargetState rts,
 			int bufferCount);
 

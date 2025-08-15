@@ -1,4 +1,5 @@
 #include "d3d12_static_mesh.hpp"
+#include "d3d12_mesh_formats.hpp"
 
 #include <glog/logging.h>
 #include <directx/d3dx12.h>
@@ -11,27 +12,6 @@
 #include "d3d12_common.hpp"
 
 using namespace okami;
-
-// Define input layout for static mesh vertices
-std::array<D3D12_INPUT_ELEMENT_DESC, 4> kInputElementDescs = {
-    D3D12_INPUT_ELEMENT_DESC{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, 
-        D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-    D3D12_INPUT_ELEMENT_DESC{"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12,
-        D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-    D3D12_INPUT_ELEMENT_DESC{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24,
-        D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-    D3D12_INPUT_ELEMENT_DESC{"TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32,
-        D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
-};
-
-static std::vector<Attribute> g_attribs;
-
-VertexFormat okami::GetStaticMeshFormat() {
-    if (g_attribs.empty()) {
-        g_attribs = GetVertexAttributes(kInputElementDescs);
-    }
-    return VertexFormat{g_attribs};
-}
 
 Expected<ComPtr<ID3D12RootSignature>> StaticMeshRenderer::CreateRootSignature(ID3D12Device& device) {
     ComPtr<ID3D12RootSignature> rootSignature;
@@ -69,7 +49,7 @@ Expected<ComPtr<ID3D12RootSignature>> StaticMeshRenderer::CreateRootSignature(ID
 
 Expected<std::shared_ptr<StaticMeshRenderer>> StaticMeshRenderer::Create(
     ID3D12Device& device,
-    std::shared_ptr<MeshManager> manager,
+    std::shared_ptr<GeometryManager> manager,
     DirectX::RenderTargetState rts,
     int bufferCount) {
     auto renderer = std::shared_ptr<StaticMeshRenderer>(new StaticMeshRenderer());
@@ -96,9 +76,10 @@ Expected<std::shared_ptr<StaticMeshRenderer>> StaticMeshRenderer::Create(
 
     // Define the graphics pipeline state object description
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    auto inputLayout = GetD3D12InputLayout(kStaticMeshAttributes);
     psoDesc.InputLayout = { 
-        kInputElementDescs.data(), 
-        static_cast<UINT>(kInputElementDescs.size()) 
+        inputLayout.data(), 
+        static_cast<UINT>(inputLayout.size()) 
     };
     psoDesc.pRootSignature = renderer->m_rootSignature.Get();
     psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader->Get());
@@ -127,13 +108,13 @@ Expected<std::shared_ptr<StaticMeshRenderer>> StaticMeshRenderer::Create(
     // Create per-frame data
     for (int i = 0; i < bufferCount; ++i) {
         auto shaderConstants = UploadBuffer<hlsl::Globals>::Create(
-            device, UploadBufferType::Constant, L"Static Mesh Constants Buffer");
+            device, UploadBufferType::Constant, L"Static Geometry Constants Buffer");
         if (!shaderConstants.has_value()) {
             return std::unexpected(shaderConstants.error());
         }
 
         auto instanceBuffer = UploadBuffer<hlsl::Instance>::Create(
-            device, UploadBufferType::Structured, L"Static Mesh Instance Buffer", 0);
+            device, UploadBufferType::Structured, L"Static Geometry Instance Buffer", 0);
         if (!instanceBuffer.has_value()) {
             return std::unexpected(instanceBuffer.error());
         }
@@ -169,17 +150,13 @@ Error StaticMeshRenderer::Render(
         **map = globals;
     }
 
-    // Resize structured buffer if necessary to fit all mesh instances
-    auto& instanceBuffer = m_perFrameData[m_currentBuffer].m_instanceBuffer;
-    auto reserveResult = instanceBuffer.Reserve(device, staticMeshes.size());
-    if (reserveResult.IsError()) {
-        return Error("Failed to reserve structured buffer for static mesh instances");
-    }
+    struct MeshInstanceData {
+        StaticMeshComponent m_component;
+        hlsl::Instance m_instance;
+    };
 
-    std::vector<std::pair<MeshImpl const*, hlsl::Instance>> instanceData;
-
+    std::vector<MeshInstanceData> instanceData;
     auto const& meshesById = m_manager->GetMeshes();
-
     // Fill instance data for all static mesh entities
     for (auto const& [entity, staticMeshComponent] : staticMeshes) {
         // Get transform for this entity
@@ -190,23 +167,34 @@ Error StaticMeshRenderer::Render(
         auto meshIt = meshesById.find(staticMeshComponent.m_mesh.GetId());
         if (meshIt == meshesById.end() || 
             !meshIt->second.m_public->m_loaded.load()) {
-            continue; // Mesh not loaded yet
+            continue; // Geometry not loaded yet
         }
 
         instanceData.emplace_back(
-            &meshIt->second,
-            hlsl::Instance{
+            MeshInstanceData{
+            .m_component = staticMeshComponent,
+            .m_instance = hlsl::Instance{
                 .m_worldMatrix = worldMatrix,
                 .m_worldInverseTransposeMatrix = glm::inverse(glm::transpose(worldMatrix))
             }
-        );
+        });
+    }
+
+    // Resize structured buffer if necessary to fit all mesh instances
+    auto& instanceBuffer = m_perFrameData[m_currentBuffer].m_instanceBuffer;
+    auto reserveResult = instanceBuffer.Reserve(device, instanceData.size());
+    if (reserveResult.IsError()) {
+        return Error("Failed to reserve structured buffer for static mesh instances");
+    }
+
+    if (instanceData.empty()) {
+        return {}; // No instances to draw
     }
 
     // Sort by mesh pointer
-    std::sort(instanceData.begin(), instanceData.end(),
-        [](auto const& a, auto const& b) {
-            return a.first < b.first; 
-        });
+    std::sort(instanceData.begin(), instanceData.end(), [](auto const& a, auto const& b) {
+        return a.m_component < b.m_component;
+    });
 
     instanceBuffer.Reserve(device, instanceData.size());
     if (instanceData.empty()) {
@@ -222,51 +210,77 @@ Error StaticMeshRenderer::Render(
 
         // Write instance data to buffer
         int index = 0;
-        for (auto const& [meshPtr, instance] : instanceData) {
-            map->At(index++) = hlsl::Instance{
-                .m_worldMatrix = instance.m_worldMatrix,
-                .m_worldInverseTransposeMatrix = instance.m_worldInverseTransposeMatrix
-            };
+        for (auto const& instance : instanceData) {
+            map->At(index++) = instance.m_instance;
         }
     }
-
     // Set the pipeline state
     commandList.SetPipelineState(m_pipelineState.Get());
     commandList.SetGraphicsRootSignature(m_rootSignature.Get());
     commandList.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList.SetGraphicsRootConstantBufferView(0, globalConstantsBuffer.GetGPUAddress());
 
+    auto const& meshDictionary = m_manager->GetMeshes();
+
     UINT firstInstance = 0;
     for (auto beginIt = instanceData.begin(); beginIt != instanceData.end();) {
         auto endIt = std::find_if(beginIt, instanceData.end(), [&beginIt](const auto& pair) {
-            return pair.first != beginIt->first;
+            return beginIt->m_component != pair.m_component;
         });
 
-        auto meshData = beginIt->first;
+        auto geometryData = beginIt->m_component.m_mesh;
+        auto meshIndex = beginIt->m_component.m_meshIndex;
+
+        auto geometryImplIt = meshDictionary.find(geometryData.GetId());
+
+        if (geometryData->m_meshes.size() <= meshIndex || geometryImplIt == meshDictionary.end()) {
+            beginIt = endIt;
+            LOG(WARNING) << "Invalid mesh index: " << meshIndex;
+            continue; // Invalid mesh index
+        }
+
+        auto const& geometryImpl = geometryImplIt->second; 
+        auto const& mesh = geometryImpl.m_public->m_data.m_meshes[meshIndex];
 
         // Set vertex buffer
-        D3D12_VERTEX_BUFFER_VIEW vertexBufferView = {};
-        vertexBufferView.BufferLocation = meshData->m_private.m_vertexBuffer.GetGPUAddress();
-        vertexBufferView.SizeInBytes = static_cast<UINT>(meshData->m_public->m_data.m_format[0].m_stride * meshData->m_private.m_vertexCount);
-        vertexBufferView.StrideInBytes = static_cast<UINT>(meshData->m_public->m_data.m_format[0].m_stride);
-        commandList.IASetVertexBuffers(0, 1, &vertexBufferView);
+        std::array<D3D12_VERTEX_BUFFER_VIEW, kStaticMeshAttributes.size()> vertexBufferViews;
+        for (int i = 0; i < vertexBufferViews.size(); ++i) {
+            auto& meshAttrib = mesh.m_attributes[i];
+            auto& buffer = geometryImpl.m_private.m_vertexBuffer;
+            vertexBufferViews[i] = {};
+            vertexBufferViews[i].BufferLocation = buffer.GetGPUAddress() + meshAttrib.m_offset;
+            vertexBufferViews[i].SizeInBytes = static_cast<UINT>(mesh.m_vertexCount * meshAttrib.GetStride());
+            vertexBufferViews[i].StrideInBytes = static_cast<UINT>(meshAttrib.GetStride());
+        }
+
+        commandList.IASetVertexBuffers(0, 
+            static_cast<UINT>(vertexBufferViews.size()),
+            vertexBufferViews.data());
+
+        if (mesh.HasIndexBuffer()) {
+            auto& buffer = *geometryImpl.m_private.m_indexBuffer;
+            D3D12_INDEX_BUFFER_VIEW indexBuffer;
+            indexBuffer.BufferLocation = buffer.GetGPUAddress() + mesh.m_indices->m_offset;
+            indexBuffer.SizeInBytes = static_cast<UINT>(mesh.m_indices->m_count * mesh.m_indices->GetStride());
+            indexBuffer.Format = GetD3D12Format(AccessorType::Scalar, mesh.m_indices->m_type);
+
+            // Set index buffer
+            commandList.IASetIndexBuffer(&indexBuffer);
+        }
 
         // Count instances of this mesh
         UINT instanceCount = static_cast<UINT>(endIt - beginIt);
 
+        // Set location in the instance buffer
         commandList.SetGraphicsRootShaderResourceView(1, instanceBuffer.GetGPUAddress() + sizeof(hlsl::Instance) * firstInstance);
 
         // Draw with or without index buffer
-        if (meshData->m_private.m_indexBuffer.GetResource() && meshData->m_private.m_indexCount > 0) {
-            D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
-            indexBufferView.BufferLocation = meshData->m_private.m_indexBuffer.GetGPUAddress();
-            indexBufferView.SizeInBytes = static_cast<UINT>(meshData->m_private.m_indexCount * sizeof(index_t));
-            indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-            commandList.IASetIndexBuffer(&indexBufferView);
-
-            commandList.DrawIndexedInstanced(meshData->m_private.m_indexCount, instanceCount, 0, 0, firstInstance);
+        if (mesh.HasIndexBuffer()) {
+            commandList.DrawIndexedInstanced(static_cast<UINT>(mesh.m_indices->m_count),
+                instanceCount, 0, 0, firstInstance);
         } else {
-            commandList.DrawInstanced(meshData->m_private.m_vertexCount, instanceCount, 0, firstInstance);
+            commandList.DrawInstanced(static_cast<UINT>(mesh.m_vertexCount), 
+                instanceCount, 0, firstInstance);
         }
 
         firstInstance += instanceCount;

@@ -1,172 +1,198 @@
 #pragma once
 
 #include <vector>
+#include <optional>
 #include <span>
-#include <filesystem>
-#include <algorithm>
-#include <stdexcept>
 
 #include "common.hpp"
+#include "aabb.hpp"
+
+#include <glm/vec3.hpp>
+#include <glm/common.hpp>
 
 namespace okami {
-	using index_t = uint32_t;
-
-	enum class AttributeType {
+    enum class AttributeType {
 		Position,
 		Normal,
 		TexCoord,
 		Color,
 		Tangent,
 		Bitangent,
+		Unknown
 		// Add more attribute types as needed
 	};
 
-	struct Attribute {
-		AttributeType m_type; // Type of the attribute
-		int m_bufferIndex;
-		size_t m_size; // Size in bytes
-		size_t m_offset; // Offset in the vertex structure
-		size_t m_stride; // Stride in bytes
+	enum class MeshType {
+		Static
 	};
-
-	enum class GeometryType {
-		StaticMesh
-	};
-
-	using VertexFormat = std::span<Attribute const>;
-
-	bool FormatsEqual(VertexFormat a, VertexFormat b);
 
 	template <typename T>
-	class GeometryView {
-	private:
-		using DataType = std::conditional_t<std::is_const_v<T>, uint8_t const, uint8_t>;
+	struct GeometryView {
+		T* m_begin;
+		T* m_end;
 
-		DataType* m_data;
-		size_t m_stride; // Stride in bytes
+		T* begin() const {
+			return m_begin;
+		}
+
+		T* end() const {
+			return m_end;
+		}
+	};
+
+    enum class AccessorType {
+        Scalar,
+        Vec2,
+        Vec3,
+        Vec4,
+        Mat2,
+        Mat3,
+        Mat4
+    };
+
+    enum class AccessorComponentType {
+        Double,
+        Float,
+        Int,
+        UInt,
+        Short,
+        UShort,
+        Byte,
+        UByte
+    };
+
+	AccessorType GetAccessorType(AttributeType type);
+	AccessorComponentType GetComponentType(AttributeType type);
+	uint32_t GetStride(AccessorType type, AccessorComponentType componentType);
+	uint32_t GetStride(AttributeType type);
+
+    struct Attribute {
+        AttributeType m_type;
+        int m_buffer;
+        size_t m_offset;
+
+        uint32_t GetStride() const;
+    };
+
+	struct IndexInfo {
+		AccessorComponentType m_type;
+		int m_buffer;
+		size_t m_count;
+		size_t m_offset;
+
+		uint32_t GetStride() const;
+	};
 	
-	public:
-		GeometryView(DataType* data, size_t stride)
-			: m_data(data), m_stride(stride) {
-		}
-
-		T& operator[](size_t index) {
-			return *reinterpret_cast<T*>(m_data + index * m_stride);
-		}
-	};
-
-	struct GeometryBuffers {
-		std::optional<std::span<float const>> positions = std::nullopt;
-		std::optional<std::span<float const>> normals = std::nullopt;
-		std::optional<std::span<float const>> texCoords = std::nullopt;
-		std::optional<std::span<float const>> tangents = std::nullopt;
-		std::optional<std::span<float const>> bitangents = std::nullopt;
-		std::optional<std::span<index_t const>> indices = std::nullopt;
-	};
-
-	class RawGeometry {
-	private:
+	struct GeometryMeshDesc {
 		std::vector<Attribute> m_attributes;
-		std::vector<std::vector<uint8_t>> m_vertexBuffers; // Raw vertex data
-		std::optional<std::vector<index_t>> m_indexBuffer;
+		size_t m_vertexCount = 0;
+		std::optional<IndexInfo> m_indices;
+		MeshType m_type;
+		AABB m_aabb;
+
+		size_t GetVertexByteSize() const;
+		size_t GetIndexByteSize() const;
+		Attribute const* TryGetAttribute(AttributeType type) const;
+
+		inline bool HasIndexBuffer() const {
+			return m_indices.has_value();
+		}
+	};
+
+	void GenerateDefaultAttributeData(
+    	std::span<uint8_t> buffer, 
+    	AttributeType attrType);
+
+    class RawGeometry {
+	private:
+        std::vector<std::vector<uint8_t>> m_buffers;
+        std::vector<GeometryMeshDesc> m_meshes;
 
 	public:
 		RawGeometry() = default;
 		OKAMI_NO_COPY(RawGeometry);
 		OKAMI_MOVE(RawGeometry);
 
-		VertexFormat GetFormat() const {
-			return m_attributes;
+		inline std::span<std::vector<uint8_t> const> GetBuffers() const {
+			return std::span(m_buffers);
 		}
 
-		std::span<uint8_t const> GetRawVertexData(int buffer = 0) const {
-			if (buffer < 0 || buffer >= m_vertexBuffers.size()) {
+        inline std::span<GeometryMeshDesc const> GetMeshes() const {
+            return std::span(m_meshes);
+        }
+
+		inline size_t GetMeshCount() const {
+			return m_meshes.size();
+		}
+
+		inline std::span<uint8_t const> GetRawVertexData(int buffer = 0) const {
+			if (buffer < 0 || buffer >= m_buffers.size()) {
 				throw std::out_of_range("Invalid buffer index");
 			}
-			return m_vertexBuffers[buffer];
+			return m_buffers[buffer];
 		}
 
-		std::span<uint8_t> GetRawVertexData(int buffer = 0) {
-			if (buffer < 0 || buffer >= m_vertexBuffers.size()) {
+		inline std::span<uint8_t> GetRawVertexData(int buffer = 0) {
+			if (buffer < 0 || buffer >= m_buffers.size()) {
 				throw std::out_of_range("Invalid buffer index");
 			}
-			return m_vertexBuffers[buffer];
-		}
-
-		bool HasIndexBuffer() const {
-			return m_indexBuffer.has_value();
-		}
-
-		std::span<index_t const> GetIndexBuffer() const {
-			if (!m_indexBuffer) {
-				throw std::runtime_error("Index buffer not available");
-			}
-			return *m_indexBuffer;
-		}
-
-		std::span<index_t> GetIndexBuffer() {
-			if (!m_indexBuffer) {
-				throw std::runtime_error("Index buffer not available");
-			}
-			return *m_indexBuffer;
+			return m_buffers[buffer];
 		}
 
 		template <typename T>
-		GeometryView<T const> GetConstView(AttributeType m_type) const {
-			// Find the attribute for the given type
-			auto it = std::find_if(m_attributes.begin(), m_attributes.end(),
-				[m_type](const Attribute& attr) { return attr.m_type == m_type; });
-			if (it == m_attributes.end()) {
-				throw std::runtime_error("Attribute type not found");
-			}
-			if (it->m_size != sizeof(T)) {
-				throw std::runtime_error("Attribute size mismatch");
-			}
-			// Create a view of the vertex data
-			return GeometryView<T const>(GetRawVertexData(it->m_bufferIndex).data() + it->m_offset, it->m_stride);
+		std::optional<GeometryView<T>> TryAccess(AttributeType attrType, size_t meshIndex = 0) const {
+			if (meshIndex >= m_meshes.size()) {
+				return std::nullopt;
+            }
+            
+            const auto& mesh = m_meshes[meshIndex];
+
+            // Find the attribute for the given attribute type
+            auto const attribute = mesh.TryGetAttribute(attrType);
+            if (!attribute) {
+                return std::nullopt;
+            }
+
+            // Get the buffer data
+            auto data = GetRawVertexData(attribute->m_buffer);
+
+            auto bufferOffset = attribute->m_offset;
+            auto stride = attribute->GetStride();
+
+            // Create a view of the buffer data
+            return GeometryView<T>(
+				reinterpret_cast<T*>(data.data() + bufferOffset),
+				reinterpret_cast<T*>(data.data() + bufferOffset + stride * mesh.m_vertexCount)
+			);
 		}
 
 		template <typename T>
-		GeometryView<T> GetView(AttributeType m_type) {
-			// Find the attribute for the given type
-			auto it = std::find_if(m_attributes.begin(), m_attributes.end(),
-				[m_type](const Attribute& attr) { return attr.m_type == m_type; });
-			if (it == m_attributes.end()) {
-				throw std::runtime_error("Attribute type not found");
-			}
-			if (it->m_size != sizeof(T)) {
-				throw std::runtime_error("Attribute size mismatch");
-			}
-			// Create a view of the vertex data
-			return GeometryView<T>(GetRawVertexData(it->m_bufferIndex).data() + it->m_offset, it->m_stride);
+		std::optional<GeometryView<T>> TryAccess(AttributeType attrType, size_t meshIndex = 0) {
+			if (meshIndex >= m_meshes.size()) {
+				return std::nullopt;
+            }
+            
+            const auto& mesh = m_meshes[meshIndex];
+            
+            // Find the attribute for the given attribute type
+            auto const attribute = mesh.TryGetAttribute(attrType);
+            if (!attribute) {
+                return std::nullopt;
+            }
+
+            // Get the buffer data
+            auto data = GetRawVertexData(attribute->m_buffer);
+
+            auto bufferOffset = attribute->m_offset;
+            auto stride = attribute->GetStride();
+
+            // Create a view of the buffer data
+            return GeometryView<T>(
+				reinterpret_cast<T*>(data.data() + bufferOffset),
+				reinterpret_cast<T*>(data.data() + bufferOffset + stride * mesh.m_vertexCount)
+			);
 		}
 
-		RawGeometry AsFormat(std::span<Attribute const> attributes) const;
-
-		RawGeometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data)
-			: m_attributes(std::move(attrs)), m_vertexBuffers(std::move(data)) {
-		}
-
-		RawGeometry(std::vector<Attribute> attrs, std::vector<std::vector<uint8_t>> data, std::optional<std::vector<index_t>> indices)
-			: m_attributes(std::move(attrs)), m_vertexBuffers(std::move(data)), m_indexBuffer(std::move(indices)) {
-		}
-
-		inline bool HasFormat(std::span<Attribute const> attributes) const {
-			return FormatsEqual(m_attributes, attributes);
-		}
-
-		static Expected<RawGeometry> FromBuffers(
-			GeometryBuffers const& buffers,
-			std::span<Attribute const> attributes
-		);
-	};
-
-	struct InitMesh {
-		RawGeometry m_geometry;
-		GeometryType m_type;
-
-		static Expected<InitMesh> LoadGLTF(
-			std::filesystem::path const& path,
-			std::function<VertexFormat(GeometryType)> getVertexFormat);
+        static Expected<RawGeometry> LoadGLTF(std::filesystem::path const& path);
 	};
 }

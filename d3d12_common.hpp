@@ -39,6 +39,10 @@ namespace okami {
 		BufferWriteMap(BufferWriteMap const&) = delete;
 		BufferWriteMap& operator=(BufferWriteMap const&) = delete;
 
+		inline InstanceType* Data() {
+			return m_instanceData;
+		}
+
 		static Expected<BufferWriteMap<InstanceType>> Map(
 			ID3D12Resource* resource) {
 			BufferWriteMap<InstanceType> result;
@@ -120,7 +124,8 @@ namespace okami {
 	enum class UploadBufferType {
 		Constant,
 		Structured,
-		Vertex
+		Vertex,
+		Index
 	};
 
 	template <typename InstanceType>
@@ -264,16 +269,16 @@ namespace okami {
 		int backbufferWidth,
 		int backbufferHeight);
 
-	class GpuBuffer {
+	class StaticBuffer {
 	private:
 		ComPtr<ID3D12Resource> m_buffer;
 
 	public:
-		GpuBuffer() = default;
-		inline GpuBuffer(ComPtr<ID3D12Resource> buffer)
+		StaticBuffer() = default;
+		inline StaticBuffer(ComPtr<ID3D12Resource> buffer)
 			: m_buffer(std::move(buffer)) {}
 
-		static Expected<GpuBuffer> Create(
+		static Expected<StaticBuffer> Create(
 			ID3D12Device& device,
 			size_t bufferSize);
 
@@ -286,9 +291,5 @@ namespace okami {
 		}
 	};
 
-	std::vector<Attribute> GetVertexAttributes(std::span<D3D12_INPUT_ELEMENT_DESC const> inputElements);
 	size_t GetFormatSize(DXGI_FORMAT format);
-
-	VertexFormat GetStaticMeshFormat();
-	VertexFormat GetMeshFormat(GeometryType type);
 }

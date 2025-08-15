@@ -7,55 +7,54 @@
 #include "geometry.hpp"
 
 namespace okami {
-    class MeshManager;
+    class GeometryManager;
 
-    struct MeshPrivate {
-		GpuBuffer m_vertexBuffer;
-		GpuBuffer m_indexBuffer;
-		UINT m_vertexCount = 0;
-		UINT m_indexCount = 0;
+    struct GeometryPrivate {
+        StaticBuffer m_vertexBuffer;
+        std::optional<StaticBuffer> m_indexBuffer;
 	};
 
-	struct MeshImpl {
-		std::unique_ptr<Resource<Mesh>> m_public;
-		MeshPrivate m_private;
+	struct GeometryImpl {
+		std::unique_ptr<Resource<Geometry>> m_public;
+		GeometryPrivate m_private;
 	};
 
     struct MeshLoadTask final : public GpuUploaderTask {
     private:
         std::optional<std::filesystem::path> m_path;
-        std::optional<InitMesh> m_initData;
+        std::optional<RawGeometry> m_initData;
         resource_id_t m_resourceId;
-        MeshManager* m_manager = nullptr;
-        MeshPrivate m_privateData;
-        Mesh m_publicData;
+        GeometryManager* m_manager = nullptr;
+        GeometryPrivate m_privateData;
+        Geometry m_publicData;
 
         // Temporary upload buffers
         // These will be released after the GPU upload is complete
-        ComPtr<ID3D12Resource> m_vertexUploadBuffer;
-        ComPtr<ID3D12Resource> m_indexUploadBuffer;
+        std::vector<ComPtr<ID3D12Resource>> m_uploadBuffers;
 
     public:
         inline MeshLoadTask(
             std::filesystem::path path,
             resource_id_t resourceId,
-            MeshManager* manager) :
+            GeometryManager* manager) :
             m_path(std::move(path)), m_resourceId(resourceId), m_manager(manager) {}
 
         inline MeshLoadTask(
-            InitMesh initData,
+            RawGeometry initData,
             resource_id_t resourceId,
-            MeshManager* manager) :
+            GeometryManager* manager) :
             m_initData(std::move(initData)), m_resourceId(resourceId), m_manager(manager) {}
 
-        Error Execute(ID3D12Device& device, ID3D12GraphicsCommandList& commandList) override;
+        Error Execute(
+            ID3D12Device& device, 
+            ID3D12GraphicsCommandList& commandList) override;
         Error Finalize() override;
     };
 
-    class MeshManager : public IResourceManager<Mesh> {
+    class GeometryManager : public IResourceManager<Geometry> {
     private:
         std::unordered_map<std::filesystem::path, resource_id_t> m_meshPathsToIds;
-		std::unordered_map<resource_id_t, MeshImpl> m_meshesById;
+		std::unordered_map<resource_id_t, GeometryImpl> m_meshesById;
 
 		std::queue<resource_id_t> m_meshesToTransition;
 		std::atomic<resource_id_t> m_nextResourceId{0};
@@ -63,30 +62,30 @@ namespace okami {
         std::shared_ptr<GpuUploader> m_uploader;
     
     public:
-        inline MeshManager(std::shared_ptr<GpuUploader> uploader) : m_uploader(std::move(uploader)) {}
+        inline GeometryManager(std::shared_ptr<GpuUploader> uploader) : m_uploader(std::move(uploader)) {}
 
-        OKAMI_NO_COPY(MeshManager);
-        OKAMI_NO_MOVE(MeshManager);
+        OKAMI_NO_COPY(GeometryManager);
+        OKAMI_NO_MOVE(GeometryManager);
 
         inline void Register(InterfaceCollection& queryable) {
-			queryable.Register<IResourceManager<Mesh>>(this);
+			queryable.Register<IResourceManager<Geometry>>(this);
 		}
 
-        inline std::unordered_map<resource_id_t, MeshImpl> const& GetMeshes() const {
+        inline std::unordered_map<resource_id_t, GeometryImpl> const& GetMeshes() const {
             return m_meshesById;
         }
 
-        std::pair<resource_id_t, ResHandle<Mesh>> NewResource(
+        std::pair<resource_id_t, ResHandle<Geometry>> NewResource(
             std::optional<std::string_view> path = std::nullopt);
 
 		Error Finalize(
             resource_id_t resourceId, 
-            Mesh publicData, 
-            MeshPrivate privateData,
+            Geometry publicData, 
+            GeometryPrivate privateData,
             Error error);
 
-		ResHandle<Mesh> Load(std::string_view path) override;
-		ResHandle<Mesh> Create(typename Mesh::CreationData&& data) override;
+		ResHandle<Geometry> Load(std::string_view path) override;
+		ResHandle<Geometry> Create(typename Geometry::CreationData&& data) override;
 
         void TransitionMeshes(ID3D12GraphicsCommandList& commandList);
     };

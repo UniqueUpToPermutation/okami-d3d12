@@ -20,10 +20,10 @@ int main(int argc, char const* argv[]) {
     if (auto err = engine.Startup(); err.IsError()) {  
         std::cerr << "Engine startup failed: " << err << std::endl;  
     }
-    
-    auto meshLoader = engine.GetResourceManager<Mesh>();
-	auto box = meshLoader->Load(GetTestAssetPath("box.glb"));
-	auto torus = meshLoader->Load(GetTestAssetPath("torus.glb"));
+
+    auto meshLoader = engine.GetResourceManager<Geometry>();
+    auto torus = meshLoader->Load(GetTestAssetPath("torus.glb"));
+    auto box = meshLoader->Load(GetTestAssetPath("box.glb"));
 
     auto camera = engine.CreateEntity();
     engine.AddComponent(camera, 
@@ -35,11 +35,11 @@ int main(int argc, char const* argv[]) {
         glm::vec3(0.0f, 1.0f, 0.0f)));
 
     auto boxEntity = engine.CreateEntity();
-    engine.AddComponent(boxEntity, StaticMeshComponent{box});
+    engine.AddComponent(boxEntity, StaticMeshComponent{torus});
 	engine.AddComponent(boxEntity, Transform::Translate(1.0f, 0.0f, 0.0f));
 
 	auto torusEntity = engine.CreateEntity();
-	engine.AddComponent(torusEntity, StaticMeshComponent{torus});
+	engine.AddComponent(torusEntity, StaticMeshComponent{box});
 	engine.AddComponent(torusEntity, Transform::Translate(-1.0f, 0.0f, 0.0f));
 
     engine.Run();

@@ -26,7 +26,7 @@
 #include "d3d12_triangle.hpp"
 #include "d3d12_static_mesh.hpp"
 #include "d3d12_upload.hpp"
-#include "d3d12_mesh.hpp"
+#include "d3d12_geometry.hpp"
 #include "d3d12_texture.hpp"
 #include "d3d12_sprite.hpp"
 
@@ -217,7 +217,7 @@ private:
 
 	TriangleRenderer m_triangleRenderer;
 
-	std::shared_ptr<MeshManager> m_meshManager;
+	std::shared_ptr<GeometryManager> m_meshManager;
 	std::shared_ptr<TextureManager> m_textureManager;
 
 	std::shared_ptr<StaticMeshRenderer> m_staticMeshRenderer;
@@ -574,7 +574,7 @@ public:
 		}
 
 		// Initialize the mesh manager
-		m_meshManager = std::make_shared<MeshManager>(m_uploader);
+		m_meshManager = std::make_shared<GeometryManager>(m_uploader);
 		m_meshManager->Register(queryable);
 
 		// Initialize the texture manager

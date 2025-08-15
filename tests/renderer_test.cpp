@@ -107,7 +107,7 @@ TEST(RendererTest, Cube) {
 		return;
     }
 
-	auto meshLoader = engine.GetResourceManager<Mesh>();
+	auto meshLoader = engine.GetResourceManager<Geometry>();
 	auto box = meshLoader->Load(GetTestAssetPath("box.glb"));
 
     auto camera = engine.CreateEntity();
@@ -147,7 +147,7 @@ TEST(RendererTest, TwoMeshes) {
 		return;
     }
 
-	auto meshLoader = engine.GetResourceManager<Mesh>();
+	auto meshLoader = engine.GetResourceManager<Geometry>();
 	auto box = meshLoader->Load(GetTestAssetPath("box.glb"));
 	auto torus = meshLoader->Load(GetTestAssetPath("torus.glb"));
 

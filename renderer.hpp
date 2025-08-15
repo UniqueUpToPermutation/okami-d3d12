@@ -36,14 +36,22 @@ namespace okami {
 
 	struct DummyTriangleComponent {};
 
-	struct Mesh {
-		VertexFormat m_format;
+	struct Geometry {
+        std::vector<GeometryMeshDesc> m_meshes;
 
-		using CreationData = InitMesh;
+		using CreationData = RawGeometry;
 	};
 
 	struct StaticMeshComponent {
-		ResHandle<Mesh> m_mesh;
+		ResHandle<Geometry> m_mesh;
+		int m_meshIndex = 0;
+
+		inline auto operator<=>(StaticMeshComponent const& other) const {
+			return (std::pair(m_mesh.Ptr(), m_meshIndex) <=> std::pair(other.m_mesh.Ptr(), other.m_meshIndex));
+		}
+		inline bool operator==(StaticMeshComponent const& other) const {
+			return m_mesh.Ptr() == other.m_mesh.Ptr() && m_meshIndex == other.m_meshIndex;
+		}
 	};
 
 	struct Rect {

@@ -212,6 +212,7 @@ target_link_libraries(Engine PRIVATE
 
 # Add TinyGLTF include directory
 target_include_directories(Engine PRIVATE ${TINYGLTF_INCLUDE_DIRS})
+target_compile_definitions(Engine PRIVATE NOMINMAX)
 
 #==============================================================================
 # Test Executable
@@ -239,6 +240,7 @@ target_link_libraries(EngineLib PUBLIC
 # Set include directories for the library
 target_include_directories(EngineLib PUBLIC ${CMAKE_SOURCE_DIR})
 target_include_directories(EngineLib PRIVATE ${TINYGLTF_INCLUDE_DIRS})
+target_compile_definitions(EngineLib PRIVATE NOMINMAX)
 
 # Find all test source files
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")

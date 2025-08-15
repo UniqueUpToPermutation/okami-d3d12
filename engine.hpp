@@ -284,6 +284,10 @@ namespace okami {
 		Resource<T>* m_resource = nullptr;
 
 	public:
+		inline Resource<T>* Ptr() const {
+			return m_resource;
+		}
+
 		inline ResHandle() = default;
 		inline ResHandle(Resource<T>* resource) : m_resource(resource) {
 			if (m_resource) {

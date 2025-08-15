@@ -56,7 +56,7 @@ hlsl::Camera okami::ToHLSLCamera(
 	};
 }
 
-Expected<GpuBuffer> GpuBuffer::Create(
+Expected<StaticBuffer> StaticBuffer::Create(
     ID3D12Device& device,
     size_t bufferSize) {
     ComPtr<ID3D12Resource> buffer;
@@ -96,59 +96,7 @@ Expected<GpuBuffer> GpuBuffer::Create(
         return std::unexpected(Error("Failed to create structured buffer resource"));
     }
 
-    return GpuBuffer(std::move(buffer));
-}
-
-std::vector<Attribute> okami::GetVertexAttributes(std::span<D3D12_INPUT_ELEMENT_DESC const> inputElements) {
-    std::vector<Attribute> attributes;
-    attributes.reserve(inputElements.size());
-
-    for (const auto& element : inputElements) {
-        Attribute attr = {};
-
-        // Map semantic name to AttributeType
-        if (strcmp(element.SemanticName, "POSITION") == 0) {
-            attr.m_type = AttributeType::Position;
-        } else if (strcmp(element.SemanticName, "NORMAL") == 0) {
-            attr.m_type = AttributeType::Normal;
-        } else if (strcmp(element.SemanticName, "TEXCOORD") == 0) {
-            attr.m_type = AttributeType::TexCoord;
-        } else if (strcmp(element.SemanticName, "COLOR") == 0) {
-            attr.m_type = AttributeType::Color;
-        } else if (strcmp(element.SemanticName, "TANGENT") == 0) {
-            attr.m_type = AttributeType::Tangent;
-        } else if (strcmp(element.SemanticName, "BITANGENT") == 0 || strcmp(element.SemanticName, "BINORMAL") == 0) {
-            attr.m_type = AttributeType::Bitangent;
-        } else {
-            // Unknown semantic, skip this element
-            LOG(WARNING) << "Unknown vertex semantic: " << element.SemanticName;
-            continue;
-        }
-
-        // Set buffer index
-        attr.m_bufferIndex = static_cast<int>(element.InputSlot);
-
-        // Set offset
-        attr.m_offset = static_cast<size_t>(element.AlignedByteOffset);
-
-        // Calculate size based on DXGI format
-        attr.m_size = GetFormatSize(element.Format);
-
-        // For stride, we need to calculate it based on the input elements
-        // Find the maximum offset + size for this input slot to determine stride
-        size_t maxOffsetPlusSize = attr.m_offset + attr.m_size;
-        for (const auto& otherElement : inputElements) {
-            if (otherElement.InputSlot == element.InputSlot) {
-                size_t otherOffsetPlusSize = otherElement.AlignedByteOffset + GetFormatSize(otherElement.Format);
-                maxOffsetPlusSize = std::max(maxOffsetPlusSize, otherOffsetPlusSize);
-            }
-        }
-        attr.m_stride = maxOffsetPlusSize;
-
-        attributes.push_back(attr);
-    }
-
-    return attributes;
+    return StaticBuffer(std::move(buffer));
 }
 
 size_t okami::GetFormatSize(DXGI_FORMAT format) {
@@ -189,14 +137,4 @@ size_t okami::GetFormatSize(DXGI_FORMAT format) {
             LOG(WARNING) << "Unknown DXGI format: " << static_cast<int>(format);
             return 0;
     }
-}
-
-VertexFormat okami::GetMeshFormat(GeometryType type) {
-    switch (type) {
-        case GeometryType::StaticMesh:
-            return GetStaticMeshFormat();
-        default:
-            LOG(WARNING) << "Unknown geometry type: " << static_cast<int>(type);
-            return {};
-    }        
 }
