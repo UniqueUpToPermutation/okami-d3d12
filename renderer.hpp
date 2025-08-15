@@ -38,6 +38,7 @@ namespace okami {
 
 	struct Geometry {
         std::vector<GeometryMeshDesc> m_meshes;
+		std::any m_privateData;
 
 		using CreationData = RawGeometry;
 	};

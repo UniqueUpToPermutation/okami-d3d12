@@ -3,6 +3,7 @@
 #include <vector>
 #include <span>
 #include <filesystem>
+#include <any>
 
 #include "common.hpp"
 
@@ -71,6 +72,7 @@ namespace okami {
     class Texture {
     public:
         TextureInfo m_info;
+        std::any m_privateData;
 
         inline uint32_t GetWidth() const { return m_info.width; }
         inline uint32_t GetHeight() const { return m_info.height; }

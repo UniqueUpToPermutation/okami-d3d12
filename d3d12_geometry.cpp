@@ -52,14 +52,16 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
         convertedMeshes.push_back(meshCopy);
     }
 
+    GeometryPrivate privateData;
+
     auto vertexBuffer = StaticBuffer::Create(device, vertexBufferSize);
     OKAMI_ERROR_RETURN(vertexBuffer);
-    m_privateData.m_vertexBuffer = std::move(vertexBuffer.value());
+    privateData.m_vertexBuffer = std::move(vertexBuffer.value());
 
     if (indexBufferSize > 0) {
         auto indexBuffer = StaticBuffer::Create(device, indexBufferSize);
         OKAMI_ERROR_RETURN(indexBuffer);
-        m_privateData.m_indexBuffer = std::move(indexBuffer.value());
+        privateData.m_indexBuffer = std::move(indexBuffer.value());
     }
 
     // Create and populate vertex upload buffer
@@ -101,12 +103,12 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
         }
     }
     // Write copy commands into command list
-    commandList.CopyResource(m_privateData.m_vertexBuffer.GetResource(),
+    commandList.CopyResource(privateData.m_vertexBuffer.GetResource(),
         vertexUploadBuffer->GetResource());
     m_uploadBuffers.push_back(vertexUploadBuffer->GetResource());
 
     // Create and populate an index upload buffer
-    if (m_privateData.m_indexBuffer) {
+    if (privateData.m_indexBuffer) {
         auto indexUploadBuffer = UploadBuffer<uint8_t>::Create(
             device,
             UploadBufferType::Index,
@@ -133,18 +135,19 @@ Error MeshLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& com
             }
         }
         // Write copy commands into command list
-        commandList.CopyResource(m_privateData.m_indexBuffer->GetResource(),
+        commandList.CopyResource(privateData.m_indexBuffer->GetResource(),
             indexUploadBuffer->GetResource());
         m_uploadBuffers.push_back(indexUploadBuffer->GetResource());
     }
 
-    m_publicData.m_meshes = std::move(convertedMeshes);
+    m_resource.m_meshes = std::move(convertedMeshes);
+    m_resource.m_privateData = std::move(privateData);
 
     return {};
 }
 
 Error MeshLoadTask::Finalize() {
-    return m_manager->Finalize(m_resourceId, m_publicData, m_privateData, GetError());
+    return m_manager->Finalize(m_resourceId, std::move(m_resource), GetError());
 }
 
 void GeometryManager::TransitionMeshes(ID3D12GraphicsCommandList& commandList) {
@@ -161,20 +164,22 @@ void GeometryManager::TransitionMeshes(ID3D12GraphicsCommandList& commandList) {
         }
         auto& geometry = it->second;
 
+        auto& privateData = std::any_cast<GeometryPrivate&>(geometry->m_data.m_privateData);
+
         // Vertex buffer transition
         D3D12_RESOURCE_BARRIER vertexBarrier = {};
         vertexBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        vertexBarrier.Transition.pResource = geometry.m_private.m_vertexBuffer.GetResource();
+        vertexBarrier.Transition.pResource = privateData.m_vertexBuffer.GetResource();
         vertexBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         vertexBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
         vertexBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
         barriers.push_back(vertexBarrier);
 
         // Index buffer transition
-        if (geometry.m_private.m_indexBuffer) {
+        if (privateData.m_indexBuffer) {
             D3D12_RESOURCE_BARRIER indexBarrier = {};
             indexBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            indexBarrier.Transition.pResource = geometry.m_private.m_indexBuffer->GetResource();
+            indexBarrier.Transition.pResource = privateData.m_indexBuffer->GetResource();
             indexBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             indexBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
             indexBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
@@ -190,25 +195,23 @@ void GeometryManager::TransitionMeshes(ID3D12GraphicsCommandList& commandList) {
 std::pair<resource_id_t, ResHandle<Geometry>> GeometryManager::NewResource(
     std::optional<std::string_view> path) {
     auto newId = m_nextResourceId.fetch_add(1);
-    auto mesh = GeometryImpl{std::make_unique<Resource<Geometry>>(), {}};
-    mesh.m_public->m_id = newId;
-    mesh.m_public->m_path = std::string(path.value_or(""));
-    auto handle = ResHandle<Geometry>(mesh.m_public.get());
+    auto mesh = std::make_unique<Resource<Geometry>>();
+    mesh->m_id = newId;
+    mesh->m_path = std::string(path.value_or(""));
+    auto handle = ResHandle<Geometry>(mesh.get());
     m_meshesById.emplace(newId, std::move(mesh));
     return { newId, handle };
 }
 
 Error GeometryManager::Finalize(resource_id_t resourceId,
-    Geometry publicData, 
-    GeometryPrivate privateData,
+    Geometry data,
     Error error) {
     auto it = m_meshesById.find(resourceId);
     if (it == m_meshesById.end()) {
         return Error("Geometry not found");
     }
 
-    it->second.m_public->m_data = publicData;
-    it->second.m_private = std::move(privateData);
+    it->second->m_data = std::move(data);
 
     if (error.IsOk()) {
         m_meshesToTransition.push(resourceId);
@@ -216,7 +219,7 @@ Error GeometryManager::Finalize(resource_id_t resourceId,
         // Use default texture?
     }
 
-    it->second.m_public->m_loaded.store(true);
+    it->second->m_loaded.store(true);
     return {};
 }
 
@@ -226,7 +229,7 @@ ResHandle<Geometry> GeometryManager::Load(std::string_view path) {
         auto resourceId = it->second;
         auto meshIt = m_meshesById.find(resourceId);
         if (meshIt != m_meshesById.end()) {
-            return meshIt->second.m_public.get();
+            return meshIt->second.get();
         }
     }
 

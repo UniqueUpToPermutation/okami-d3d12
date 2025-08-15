@@ -14,13 +14,8 @@ namespace okami {
         ComPtr<ID3D12Resource> m_resource;
         DescriptorPool::Handle m_handle;
         DXGI_FORMAT m_dxgiFormat = DXGI_FORMAT_UNKNOWN;
-    };
 
-    struct TextureImpl {
-        std::unique_ptr<Resource<Texture>> m_public;
-        TexturePrivate m_private;
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDesc() const;
+        D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDesc(TextureInfo const& info) const;
     };
 
     struct TextureLoadTask final : public GpuUploaderTask {
@@ -29,8 +24,7 @@ namespace okami {
         std::optional<RawTexture> m_initData;
         resource_id_t m_resourceId;
         TextureManager* m_manager = nullptr;
-        TexturePrivate m_privateData;
-        Texture m_publicData;
+        Texture m_resource;
 
         // Temporary upload buffers
         // These will be released after the GPU upload is complete
@@ -60,7 +54,7 @@ namespace okami {
     class TextureManager : public IResourceManager<Texture> {
     private:
         std::unordered_map<std::filesystem::path, resource_id_t> m_texturePathsToIds;
-        std::unordered_map<resource_id_t, TextureImpl> m_texturesById;
+        std::unordered_map<resource_id_t, std::unique_ptr<Resource<Texture>>> m_texturesById;
 
         std::queue<resource_id_t> m_texturesToTransition;
         std::atomic<resource_id_t> m_nextResourceId{0};
@@ -87,7 +81,7 @@ namespace okami {
             queryable.Register<IResourceManager<Texture>>(this);
         }
 
-        inline std::unordered_map<resource_id_t, TextureImpl> const& GetTextures() const {
+        inline std::unordered_map<resource_id_t, std::unique_ptr<Resource<Texture>>> const& GetTextures() const {
             return m_texturesById;
         }
 
@@ -104,8 +98,7 @@ namespace okami {
 
         Error Finalize(
             resource_id_t resourceId,
-            Texture publicData, 
-            TexturePrivate privateData,
+            Texture data,
             Error error);
 
         ResHandle<Texture> Load(std::string_view path) override;

@@ -166,7 +166,7 @@ Error StaticMeshRenderer::Render(
         // Set instance data
         auto meshIt = meshesById.find(staticMeshComponent.m_mesh.GetId());
         if (meshIt == meshesById.end() || 
-            !meshIt->second.m_public->m_loaded.load()) {
+            !meshIt->second->m_loaded.load()) {
             continue; // Geometry not loaded yet
         }
 
@@ -220,8 +220,6 @@ Error StaticMeshRenderer::Render(
     commandList.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList.SetGraphicsRootConstantBufferView(0, globalConstantsBuffer.GetGPUAddress());
 
-    auto const& meshDictionary = m_manager->GetMeshes();
-
     UINT firstInstance = 0;
     for (auto beginIt = instanceData.begin(); beginIt != instanceData.end();) {
         auto endIt = std::find_if(beginIt, instanceData.end(), [&beginIt](const auto& pair) {
@@ -231,22 +229,14 @@ Error StaticMeshRenderer::Render(
         auto geometryData = beginIt->m_component.m_mesh;
         auto meshIndex = beginIt->m_component.m_meshIndex;
 
-        auto geometryImplIt = meshDictionary.find(geometryData.GetId());
-
-        if (geometryData->m_meshes.size() <= meshIndex || geometryImplIt == meshDictionary.end()) {
-            beginIt = endIt;
-            LOG(WARNING) << "Invalid mesh index: " << meshIndex;
-            continue; // Invalid mesh index
-        }
-
-        auto const& geometryImpl = geometryImplIt->second; 
-        auto const& mesh = geometryImpl.m_public->m_data.m_meshes[meshIndex];
+        auto const& mesh = geometryData->m_meshes[meshIndex];
+        auto const& privateData = std::any_cast<GeometryPrivate const&>(geometryData->m_privateData);
 
         // Set vertex buffer
         std::array<D3D12_VERTEX_BUFFER_VIEW, kStaticMeshAttributes.size()> vertexBufferViews;
         for (int i = 0; i < vertexBufferViews.size(); ++i) {
             auto& meshAttrib = mesh.m_attributes[i];
-            auto& buffer = geometryImpl.m_private.m_vertexBuffer;
+            auto& buffer = privateData.m_vertexBuffer;
             vertexBufferViews[i] = {};
             vertexBufferViews[i].BufferLocation = buffer.GetGPUAddress() + meshAttrib.m_offset;
             vertexBufferViews[i].SizeInBytes = static_cast<UINT>(mesh.m_vertexCount * meshAttrib.GetStride());
@@ -258,7 +248,7 @@ Error StaticMeshRenderer::Render(
             vertexBufferViews.data());
 
         if (mesh.HasIndexBuffer()) {
-            auto& buffer = *geometryImpl.m_private.m_indexBuffer;
+            auto& buffer = *privateData.m_indexBuffer;
             D3D12_INDEX_BUFFER_VIEW indexBuffer;
             indexBuffer.BufferLocation = buffer.GetGPUAddress() + mesh.m_indices->m_offset;
             indexBuffer.SizeInBytes = static_cast<UINT>(mesh.m_indices->m_count * mesh.m_indices->GetStride());

@@ -197,7 +197,6 @@ Error SpriteRenderer::Render(
     }
 
     struct Instance {
-        TextureImpl const* m_texture;
         Transform m_transform;
         SpriteComponent m_sprite;
     };
@@ -207,21 +206,15 @@ Error SpriteRenderer::Render(
 
     auto storage = m_staticSpriteStorage.GetStorage<SpriteComponent>();
 
-    auto const& texturesById = m_textureManager->GetTextures();
-
     for (auto [e, sprite] : storage) {
         // Get transform for this entity
         auto transformPtr = transforms.TryGet(e);
         const Transform& transform = transformPtr ? *transformPtr : Transform::Identity();
 
-        // Set instance data
-        auto textureIt = texturesById.find(sprite.m_texture.GetId());
-        if (textureIt == texturesById.end() || 
-            !textureIt->second.m_public->m_loaded.load()) {
-            continue; // Texture not loaded yet
-        }
-
-        batchedSprites.push_back(Instance{&textureIt->second, transform, sprite});
+        batchedSprites.push_back(Instance{
+            .m_transform = transform,
+            .m_sprite = sprite
+        });
     }
 
     if (batchedSprites.empty()) {
@@ -251,7 +244,7 @@ Error SpriteRenderer::Render(
     std::sort(batchedSprites.begin(), batchedSprites.end(),
         [](const auto& a, const auto& b) {
             if (a.m_sprite.m_layer == b.m_sprite.m_layer) {
-                return a.m_texture < b.m_texture; // Sort by texture pointer if layers are equal
+                return a.m_sprite.m_texture.Ptr() < b.m_sprite.m_texture.Ptr(); // Sort by texture pointer if layers are equal
             }
             return a.m_sprite.m_layer < b.m_sprite.m_layer; // Sort by layer
         });
@@ -268,8 +261,8 @@ Error SpriteRenderer::Render(
     UINT bufferOffset = 0;
     for (auto batchBegin = batchedSprites.begin(); batchBegin != batchedSprites.end();) {
         auto batchEnd = std::find_if(batchBegin, batchedSprites.end(),
-            [texture = batchBegin->m_texture](const Instance& instance) {
-                return instance.m_texture != texture;
+            [texture = batchBegin->m_sprite.m_texture.Ptr()](const Instance& instance) {
+                return instance.m_sprite.m_texture.Ptr() != texture;
             });
 
         for (auto it = batchBegin; it != batchEnd; ++it) {
@@ -313,7 +306,9 @@ Error SpriteRenderer::Render(
         commandList.IASetVertexBuffers(0, 1, vertexBufferViews);
 
         // Bind texture
-        auto textureHandle = batchBegin->m_texture->m_private.m_handle;
+        auto const& privateData = std::any_cast<TexturePrivate const&>(batchBegin->m_sprite.m_texture->m_privateData);
+
+        auto textureHandle = privateData.m_handle;
         commandList.SetGraphicsRootDescriptorTable(1, m_textureManager->GetSrvPool().GetGpuHandle(textureHandle));
         commandList.DrawInstanced(batchSize, 1, 0, 0);
 

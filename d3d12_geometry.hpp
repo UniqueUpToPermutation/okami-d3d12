@@ -14,19 +14,13 @@ namespace okami {
         std::optional<StaticBuffer> m_indexBuffer;
 	};
 
-	struct GeometryImpl {
-		std::unique_ptr<Resource<Geometry>> m_public;
-		GeometryPrivate m_private;
-	};
-
     struct MeshLoadTask final : public GpuUploaderTask {
     private:
         std::optional<std::filesystem::path> m_path;
         std::optional<RawGeometry> m_initData;
         resource_id_t m_resourceId;
         GeometryManager* m_manager = nullptr;
-        GeometryPrivate m_privateData;
-        Geometry m_publicData;
+        Geometry m_resource;
 
         // Temporary upload buffers
         // These will be released after the GPU upload is complete
@@ -54,7 +48,7 @@ namespace okami {
     class GeometryManager : public IResourceManager<Geometry> {
     private:
         std::unordered_map<std::filesystem::path, resource_id_t> m_meshPathsToIds;
-		std::unordered_map<resource_id_t, GeometryImpl> m_meshesById;
+		std::unordered_map<resource_id_t, std::unique_ptr<Resource<Geometry>>> m_meshesById;
 
 		std::queue<resource_id_t> m_meshesToTransition;
 		std::atomic<resource_id_t> m_nextResourceId{0};
@@ -71,7 +65,7 @@ namespace okami {
 			queryable.Register<IResourceManager<Geometry>>(this);
 		}
 
-        inline std::unordered_map<resource_id_t, GeometryImpl> const& GetMeshes() const {
+        inline std::unordered_map<resource_id_t, std::unique_ptr<Resource<Geometry>>> const& GetMeshes() const {
             return m_meshesById;
         }
 
@@ -80,8 +74,7 @@ namespace okami {
 
 		Error Finalize(
             resource_id_t resourceId, 
-            Geometry publicData, 
-            GeometryPrivate privateData,
+            Geometry data,
             Error error);
 
 		ResHandle<Geometry> Load(std::string_view path) override;

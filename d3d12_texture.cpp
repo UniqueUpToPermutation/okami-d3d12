@@ -72,6 +72,8 @@ Error TextureLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& 
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
+    TexturePrivate privateData;
+
     auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     HRESULT hr = device.CreateCommittedResource(
         &heapProperties,
@@ -79,18 +81,18 @@ Error TextureLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& 
         &textureDesc,
         D3D12_RESOURCE_STATE_COPY_DEST,
         nullptr,
-        IID_PPV_ARGS(&m_privateData.m_resource));
+        IID_PPV_ARGS(&privateData.m_resource));
 
     if (FAILED(hr)) {
         return Error("Failed to create texture resource");
     }
-    m_privateData.m_resource->SetName(L"Okami Managed Texture Resource");
+    privateData.m_resource->SetName(L"Okami Managed Texture Resource");
 
     // Store texture properties
-    m_privateData.m_dxgiFormat = dxgiFormat;
+    privateData.m_dxgiFormat = dxgiFormat;
 
     // Create upload buffer
-    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_privateData.m_resource.Get(), 0, 1);
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(privateData.m_resource.Get(), 0, 1);
 
     heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
@@ -114,16 +116,17 @@ Error TextureLoadTask::Execute(ID3D12Device& device, ID3D12GraphicsCommandList& 
     subresourceData.SlicePitch = subresourceData.RowPitch * info.height;
 
     // Upload texture data
-    UpdateSubresources(&commandList, m_privateData.m_resource.Get(), m_uploadBuffer.Get(), 0, 0, 1, &subresourceData);
+    UpdateSubresources(&commandList, privateData.m_resource.Get(), m_uploadBuffer.Get(), 0, 0, 1, &subresourceData);
 
-    // Set public data
-    m_publicData.m_info = info;
+    // Set resource data
+    m_resource.m_info = info;
+    m_resource.m_privateData = std::move(privateData);
 
     return {};
 }
 
 Error TextureLoadTask::Finalize() {
-    return m_manager->Finalize(m_resourceId, m_publicData, m_privateData, GetError());
+    return m_manager->Finalize(m_resourceId, std::move(m_resource), GetError());
 }
 
 Expected<std::shared_ptr<TextureManager>> TextureManager::Create(
@@ -162,10 +165,12 @@ Error TextureManager::TransitionTextures(ID3D12Device& device, ID3D12GraphicsCom
         }
         auto& texture = it->second;
 
+        auto& privateData = std::any_cast<TexturePrivate&>(texture->m_data.m_privateData);
+
         // Texture transition
         D3D12_RESOURCE_BARRIER barrier = {};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource = texture.m_private.m_resource.Get();
+        barrier.Transition.pResource = privateData.m_resource.Get();
         barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -178,12 +183,12 @@ Error TextureManager::TransitionTextures(ID3D12Device& device, ID3D12GraphicsCom
             continue;
         }
 
-        auto srvDesc = texture.GetSRVDesc();
+        auto srvDesc = privateData.GetSRVDesc(texture->m_data.m_info);
         device.CreateShaderResourceView(
-            texture.m_private.m_resource.Get(), 
-            &srvDesc, 
+            privateData.m_resource.Get(),
+            &srvDesc,
             m_srvDescriptorPool.GetCpuHandle(*handle));
-        texture.m_private.m_handle = *handle;
+        privateData.m_handle = *handle;
     }
 
     if (!barriers.empty()) {
@@ -225,41 +230,42 @@ Error TextureManager::RegenerateSRVs(ID3D12Device& device, uint32_t poolSize) {
             continue;
         }
 
+        auto& privateData = std::any_cast<TexturePrivate&>(texture->m_data.m_privateData);
+
         // Create SRV for the texture
-        auto srvDesc = texture.GetSRVDesc();
+        auto srvDesc = privateData.GetSRVDesc(texture->m_data.m_info);
         device.CreateShaderResourceView(
-            texture.m_private.m_resource.Get(), 
-            &srvDesc, 
+            privateData.m_resource.Get(),
+            &srvDesc,
             m_srvDescriptorPool.GetCpuHandle(*handle));
-        texture.m_private.m_handle = *handle;
+        privateData.m_handle = *handle;
     }
 
     return {};
 }
 
-D3D12_SHADER_RESOURCE_VIEW_DESC TextureImpl::GetSRVDesc() const {
+D3D12_SHADER_RESOURCE_VIEW_DESC TexturePrivate::GetSRVDesc(TextureInfo const& info) const {
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format = m_private.m_dxgiFormat;
+    srvDesc.Format = m_dxgiFormat;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Texture2D.MipLevels = m_public->m_data.GetMipLevels();
+    srvDesc.Texture2D.MipLevels = info.mipLevels;
     return srvDesc;
 }
 
 std::pair<resource_id_t, ResHandle<Texture>> TextureManager::NewResource(
     std::optional<std::string_view> path) {
     auto newId = m_nextResourceId.fetch_add(1);
-    auto texture = TextureImpl{std::make_unique<Resource<Texture>>(), {}};
-    texture.m_public->m_id = newId;
-    texture.m_public->m_path = std::string(path.value_or(""));
-    auto handle = ResHandle<Texture>(texture.m_public.get());
+    auto texture = std::make_unique<Resource<Texture>>();
+    texture->m_id = newId;
+    texture->m_path = std::string(path.value_or(""));
+    auto handle = ResHandle<Texture>(texture.get());
     m_texturesById.emplace(newId, std::move(texture));
     return { newId, handle };
 }
 
 Error TextureManager::Finalize(resource_id_t resourceId,
-    Texture publicData, 
-    TexturePrivate privateData,
+    Texture data, 
     Error error) {
     auto it = m_texturesById.find(resourceId);
     if (it == m_texturesById.end()) {
@@ -267,14 +273,13 @@ Error TextureManager::Finalize(resource_id_t resourceId,
     }
 
     // Update texture info
-    it->second.m_public->m_data = publicData;
-    it->second.m_private = privateData;
+    it->second->m_data = std::move(data);
 
     if (!error.IsError()) {
         m_texturesToTransition.push(resourceId);
     }
 
-    it->second.m_public->m_loaded.store(true);
+    it->second->m_loaded.store(true);
 
     return {};
 }
@@ -285,7 +290,7 @@ ResHandle<Texture> TextureManager::Load(std::string_view path) {
         auto resourceId = it->second;
         auto textureIt = m_texturesById.find(resourceId);
         if (textureIt != m_texturesById.end()) {
-            return textureIt->second.m_public.get();
+            return textureIt->second.get();
         }
     }
 
