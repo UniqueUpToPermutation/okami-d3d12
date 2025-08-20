@@ -48,9 +48,15 @@ Engine::~Engine() {
 Error Engine::Startup() {
 	LOG(INFO) << "Starting Okami Engine";
 
+	// Create I/O thread
+	auto contentLoaderThread = CreateUploaderThread();
+	OKAMI_ERROR_RETURN(contentLoaderThread);
+	m_contentLoaderThread = std::move(contentLoaderThread.value());
+	m_interfaces.Register<IUploaderThread>(m_contentLoaderThread.get());
+
 	m_signalHandlers.RegisterHandler<SignalExit>([this](const SignalExit&) {
 		m_shouldExit.store(true);
-		});
+	});
 
 	for (auto& module : m_modules) {
 		module->Register(m_interfaces, m_signalHandlers);
@@ -74,6 +80,9 @@ Error Engine::Startup() {
 
 void Engine::Shutdown() {
 	LOG(INFO) << "Shutting down Okami Engine";
+	
+	m_contentLoaderThread.reset();
+
 	for (auto it = m_modules.rbegin(); it != m_modules.rend(); ++it) {
 		LOG(INFO) << "Shutting down module: " << (*it)->GetName();
 		(*it)->Shutdown(m_interfaces, m_signalHandlers);

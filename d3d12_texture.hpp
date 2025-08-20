@@ -7,6 +7,8 @@
 #include "texture.hpp"
 #include "d3d12_descriptor_pool.hpp"
 
+#include <concurrentqueue/concurrentqueue.h>
+
 namespace okami {
     class TextureManager;
 
@@ -102,7 +104,6 @@ namespace okami {
             Error error);
 
         ResHandle<Texture> Load(std::string_view path) override;
-        ResHandle<Texture> Create(typename Texture::CreationData&& data) override;
 
         Error RegenerateSRVs(ID3D12Device& device, uint32_t poolSize);
         Error TransitionTextures(ID3D12Device& device, ID3D12GraphicsCommandList& commandList);

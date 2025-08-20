@@ -242,13 +242,3 @@ ResHandle<Geometry> GeometryManager::Load(std::string_view path) {
     m_meshPathsToIds.emplace(path, resourceId);
     return handle;
 }
-
-ResHandle<Geometry> GeometryManager::Create(typename Geometry::CreationData&& data) {
-    auto [resourceId, handle] = NewResource();
-    m_uploader->SubmitTask(
-        std::make_unique<MeshLoadTask>(
-            std::move(data),
-            resourceId,
-            this));
-    return handle;
-}

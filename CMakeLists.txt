@@ -31,6 +31,7 @@ find_package(yaml-cpp CONFIG REQUIRED)
 find_package(directx-headers CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(unofficial-concurrentqueue CONFIG REQUIRED)
+find_package(unofficial-im3d CONFIG REQUIRED)
 
 # TinyGLTF is header-only and doesn't provide CMake config
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
@@ -208,6 +209,7 @@ target_link_libraries(Engine PRIVATE
     dxguid
     glog::glog
     yaml-cpp::yaml-cpp
+    unofficial::im3d::im3d
 )
 
 # Add TinyGLTF include directory
@@ -235,6 +237,7 @@ target_link_libraries(EngineLib PUBLIC
     dxguid
     glog::glog
     yaml-cpp::yaml-cpp
+    unofficial::im3d::im3d
 )
 
 # Set include directories for the library

@@ -303,13 +303,3 @@ ResHandle<Texture> TextureManager::Load(std::string_view path) {
     m_texturePathsToIds.emplace(path, resourceId);
     return handle;
 }
-
-ResHandle<Texture> TextureManager::Create(typename Texture::CreationData&& data) {
-    auto [resourceId, handle] = NewResource();
-    m_uploader->SubmitTask(
-        std::make_unique<TextureLoadTask>(
-            std::move(data),
-            resourceId,
-            this));
-    return handle;
-}

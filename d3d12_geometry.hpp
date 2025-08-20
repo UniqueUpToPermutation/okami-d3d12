@@ -78,7 +78,6 @@ namespace okami {
             Error error);
 
 		ResHandle<Geometry> Load(std::string_view path) override;
-		ResHandle<Geometry> Create(typename Geometry::CreationData&& data) override;
 
         void TransitionMeshes(ID3D12GraphicsCommandList& commandList);
     };

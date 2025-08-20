@@ -17,6 +17,7 @@
 
 #include "entity_tree.hpp"
 #include "common.hpp"
+#include "uploader.hpp"
 
 namespace okami {
 	template <typename T>
@@ -262,14 +263,9 @@ namespace okami {
 	constexpr resource_id_t kInvalidResource = -1;
 
 	template <typename T>
-	concept ResourceType = requires {
-		typename T::CreationData;
-	};
-
-	template <ResourceType T>
 	struct Resource;
 
-	template <ResourceType T>
+	template <typename T>
 	struct Resource {
 		T m_data;
 		resource_id_t m_id = kInvalidResource;
@@ -278,7 +274,7 @@ namespace okami {
 		std::atomic<int> m_refCount{ 0 };
 	};
 
-	template <ResourceType T>
+	template <typename T>
 	struct ResHandle {
 	private:
 		Resource<T>* m_resource = nullptr;
@@ -345,11 +341,10 @@ namespace okami {
 		}
 	};
 
-	template <ResourceType T>
+	template <typename T>
 	class IResourceManager {
 	public:
 		virtual ResHandle<T> Load(std::string_view path) = 0;
-		virtual ResHandle<T> Create(typename T::CreationData&& data) = 0;
 
 		inline ResHandle<T> Load(std::string const& path) {
 			return Load(std::string_view(path));
@@ -366,6 +361,8 @@ namespace okami {
 		InterfaceCollection m_interfaces;
 		SignalHandlerCollection m_signalHandlers;
 		EntityTree m_entityTree;
+
+		std::unique_ptr<IUploaderThread> m_contentLoaderThread;
 
 		std::atomic<bool> m_shouldExit{ false };
 
@@ -428,7 +425,7 @@ namespace okami {
 			m_signalHandlers.RemoveComponent<T>(entity);
 		}
 
-		template <ResourceType T>
+		template <typename T>
 		IResourceManager<T>* GetResourceManager() {
 			return m_interfaces.Query<IResourceManager<T>>();
 		}

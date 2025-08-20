@@ -35,6 +35,8 @@
 
 #define OKAMI_ERROR_RETURN(x) if (!x) { return okami::MakeError(std::move(x)); }
 #define OKAMI_UNEXPECTED_RETURN(x) if (!x) { return std::unexpected(okami::MakeError(std::move(x))); }
+#define OKAMI_ERROR_RETURN_IF(condition, x) if (condition) { return x; }
+#define OKAMI_UNEXPECTED_RETURN_IF(condition, x) if (condition) { return std::unexpected(x); }
 
 namespace okami {
 	struct Error {
@@ -43,6 +45,8 @@ namespace okami {
 		Error() : m_message(std::monostate{}) {}
 		Error(const std::string& msg) : m_message(msg) {}
 		Error(const char* msg) : m_message(std::string_view{ msg }) {}
+
+		static constexpr Error None = {};
 
 		operator bool() const {
 			return IsOk();

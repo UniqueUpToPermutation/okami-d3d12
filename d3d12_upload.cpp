@@ -6,9 +6,9 @@
 
 // #define UPLOAD_DEBUG 
 
-using namespace okami;
+using namespace okami::deprecated;
 
-namespace okami {
+namespace okami::deprecated {
 
 struct GpuUploaderImpl {
     std::thread m_thread;
