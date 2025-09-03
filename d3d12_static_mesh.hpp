@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_D3D12
+
 #include <DirectXTK12/RenderTargetState.h>
 
 #include "renderer.hpp"
@@ -58,3 +60,5 @@ namespace okami {
 			IStorageAccessor<Transform> const& transforms);
 	};
 }
+
+#endif

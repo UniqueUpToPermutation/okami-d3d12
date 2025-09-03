@@ -197,7 +197,7 @@ namespace okami {
 
 	template <typename T, typename... Ts>
 	T const* StorageAccessor<T, Ts...>::TryGet(entity_t entity) const {
-		auto& storage = m_storage->GetStorage<T>();
+		auto& storage = m_storage->template GetStorage<T>();
 		auto it = storage.find(entity);
 		if (it != storage.end()) {
 			return &it->second;

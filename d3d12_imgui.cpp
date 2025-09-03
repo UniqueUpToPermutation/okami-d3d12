@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_imgui.hpp"
 
 #include <imgui.h>
@@ -98,3 +100,5 @@ void ImGuiImpl::Shutdown() {
 ImGuiImpl::~ImGuiImpl() {
 	Shutdown();
 }
+
+#endif

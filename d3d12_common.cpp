@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_common.hpp"
 
 #include <filesystem>
@@ -138,3 +140,5 @@ size_t okami::GetFormatSize(DXGI_FORMAT format) {
             return 0;
     }
 }
+
+#endif

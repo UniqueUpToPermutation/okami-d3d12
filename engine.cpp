@@ -202,3 +202,9 @@ public:
 void Engine::AddScript(script_t script, std::string const& name) {
 	AddModule<ScriptModule>(std::move(script), name);
 }
+
+#ifndef USE_D3D12
+std::unique_ptr<okami::IEngineModule> D3D12RendererModuleFactory::operator() () {
+	throw std::runtime_error("D3D12 is not supported");
+}
+#endif

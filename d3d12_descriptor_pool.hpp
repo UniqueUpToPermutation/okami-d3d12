@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_D3D12
+
 #include <d3d12.h>
 #include <wrl/client.h>
 
@@ -53,3 +55,5 @@ namespace okami {
 		OKAMI_NO_COPY(DescriptorPool);
 	};
 }
+
+#endif

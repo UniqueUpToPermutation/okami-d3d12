@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "common.hpp"
 #include "d3d12_sprite.hpp"
 #include "d3d12_common.hpp"
@@ -321,3 +323,5 @@ Error SpriteRenderer::Render(
 
     return {};
 }
+
+#endif

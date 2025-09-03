@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_D3D12
+
 #include <thread>
 #include <atomic>
 #include <queue>
@@ -102,3 +104,5 @@ namespace okami {
         size_t FetchAndFinalizeTasks();
     };
 }
+
+#endif

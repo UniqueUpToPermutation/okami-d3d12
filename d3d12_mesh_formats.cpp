@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_mesh_formats.hpp"
 
 #include <d3d12.h>
@@ -85,3 +87,5 @@ MeshRequirements okami::GetD3D12MeshRequirements() {
     };
     return reqs;
 }
+
+#endif

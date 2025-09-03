@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_texture.hpp"
 
 #include <glog/logging.h>
@@ -313,3 +315,5 @@ ResHandle<Texture> TextureManager::Create(typename Texture::CreationData&& data)
             this));
     return handle;
 }
+
+#endif

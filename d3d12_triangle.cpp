@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_triangle.hpp"
 #include "paths.hpp"
 #include <d3d12.h>
@@ -195,3 +197,5 @@ void TriangleRenderer::Shutdown() {
     m_perFrameData.clear();
     m_dummyTriangleStorage.Clear();
 }
+
+#endif

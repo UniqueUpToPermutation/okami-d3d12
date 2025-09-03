@@ -22,21 +22,53 @@ project ("Engine")
 # Enable testing
 enable_testing()
 
+# Default USE_D3D12 to ON on Windows, OFF on other platforms. This allows
+# configuring the project to avoid pulling DirectX/D3D12 code on macOS.
+if(WIN32)
+    set(DEFAULT_USE_D3D12 ON)
+else()
+    set(DEFAULT_USE_D3D12 OFF)
+endif()
+option(USE_D3D12 "Enable D3D12 renderer and DirectX dependencies" ${DEFAULT_USE_D3D12})
+message(STATUS "USE_D3D12=${USE_D3D12}")
+
 # Find packages via vcpkg
 find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
-find_package(directxtk12 CONFIG REQUIRED)
 find_package(glog CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
-find_package(directx-headers CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(unofficial-concurrentqueue CONFIG REQUIRED)
+
+# DirectX / D3D12 related packages are only needed when USE_D3D12 is enabled.
+if(USE_D3D12)
+    if(NOT WIN32)
+        message(FATAL_ERROR "USE_D3D12 is enabled but DirectX is only available on Windows")
+    endif()
+    find_package(directxtk12 CONFIG REQUIRED)
+    find_package(directx-headers CONFIG REQUIRED)
+endif()
 
 # TinyGLTF is header-only and doesn't provide CMake config
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
 
 # Automatically add all .cpp and .hpp files in the project directory
 file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
+
+# If D3D12 support is disabled, filter out any d3d12_* source/header files so
+# they are not compiled on non-Windows platforms.
+if(NOT USE_D3D12)
+    set(_FILTERED_ENGINE_SOURCES "")
+    foreach(_src IN LISTS ENGINE_SOURCES)
+        get_filename_component(_fname ${_src} NAME)
+        if(NOT "${_fname}" MATCHES "^d3d12_")
+            list(APPEND _FILTERED_ENGINE_SOURCES ${_src})
+        else()
+            message(STATUS "Excluding D3D12 source from build: ${_fname}")
+        endif()
+    endforeach()
+    set(ENGINE_SOURCES ${_FILTERED_ENGINE_SOURCES})
+endif()
 
 #==============================================================================
 # HLSL Shader Compilation System
@@ -71,8 +103,8 @@ function(add_hlsl_shader TARGET_NAME HLSL_FILE SHADER_TYPE ENTRY_POINT)
     get_filename_component(COMPILED_SHADER_DIR ${COMPILED_SHADER} DIRECTORY)
     file(MAKE_DIRECTORY ${COMPILED_SHADER_DIR})
     
-    # Find fxc.exe compiler (Windows only)
-    if(WIN32)
+    # Find fxc.exe compiler (Windows + D3D12 only)
+    if(WIN32 AND USE_D3D12)
         find_program(FXC_EXECUTABLE
             NAMES fxc.exe
             PATHS
@@ -131,6 +163,8 @@ set(SHADER_ENTRY_POINTS
 #==============================================================================
 
 add_executable (Engine ${ENGINE_SOURCES} ${IMGUI_IMPL_SOURCES})
+
+if(USE_D3D12)
 
 # Process all HLSL files and compile shaders
 set(ALL_COMPILED_SHADERS "")
@@ -197,21 +231,39 @@ if(ALL_COMPILED_SHADERS)
     message(STATUS "Compiled shaders will be available in: ${CMAKE_BINARY_DIR}/shaders/")
 endif()
 
+endif() # USE_D3D12
+
 # Link libraries for main engine
 target_link_libraries(Engine PRIVATE
-    glfw
-    imgui::imgui
-    Microsoft::DirectXTK12
-    Microsoft::DirectX-Headers
-    d3d12
-    dxgi
-    dxguid
-    glog::glog
-    yaml-cpp::yaml-cpp
+        glfw
+        imgui::imgui
+        glog::glog
+        yaml-cpp::yaml-cpp
 )
+
+# Link Windows-only DirectX libraries when building on Windows
+if(WIN32)
+    target_link_libraries(Engine PRIVATE
+        Microsoft::DirectXTK12
+        Microsoft::DirectX-Headers
+        d3d12
+        dxgi
+        dxguid
+    )
+endif()
 
 # Add TinyGLTF include directory
 target_include_directories(Engine PRIVATE ${TINYGLTF_INCLUDE_DIRS})
+if(USE_D3D12)
+    target_link_libraries(Engine PRIVATE
+        Microsoft::DirectXTK12
+        Microsoft::DirectX-Headers
+        d3d12
+        dxgi
+        dxguid
+    )
+    target_compile_definitions(Engine PRIVATE USE_D3D12=1)
+endif()
 target_compile_definitions(Engine PRIVATE NOMINMAX)
 
 #==============================================================================
@@ -222,28 +274,66 @@ target_compile_definitions(Engine PRIVATE NOMINMAX)
 file(GLOB ENGINE_LIB_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
 list(REMOVE_ITEM ENGINE_LIB_SOURCES "${CMAKE_SOURCE_DIR}/main.cpp")
 
+# Filter library sources when D3D12 support is disabled
+if(NOT USE_D3D12)
+    set(_FILTERED_LIB_SOURCES "")
+    foreach(_src IN LISTS ENGINE_LIB_SOURCES)
+        get_filename_component(_fname ${_src} NAME)
+        if(NOT "${_fname}" MATCHES "^d3d12_")
+            list(APPEND _FILTERED_LIB_SOURCES ${_src})
+        else()
+            message(STATUS "Excluding D3D12 lib source from build: ${_fname}")
+        endif()
+    endforeach()
+    set(ENGINE_LIB_SOURCES ${_FILTERED_LIB_SOURCES})
+endif()
+
 add_library(EngineLib STATIC ${ENGINE_LIB_SOURCES})
 
 # Link libraries for engine library
 target_link_libraries(EngineLib PUBLIC
-    glfw
-    imgui::imgui
-    Microsoft::DirectXTK12
-    Microsoft::DirectX-Headers
-    d3d12
-    dxgi
-    dxguid
-    glog::glog
-    yaml-cpp::yaml-cpp
+        glfw
+        imgui::imgui
+        glog::glog
+        yaml-cpp::yaml-cpp
 )
+
+if(WIN32)
+    if(USE_D3D12)
+        target_link_libraries(EngineLib PUBLIC
+            Microsoft::DirectXTK12
+            Microsoft::DirectX-Headers
+            d3d12
+            dxgi
+            dxguid
+        )
+    endif()
+endif()
 
 # Set include directories for the library
 target_include_directories(EngineLib PUBLIC ${CMAKE_SOURCE_DIR})
 target_include_directories(EngineLib PRIVATE ${TINYGLTF_INCLUDE_DIRS})
 target_compile_definitions(EngineLib PRIVATE NOMINMAX)
+if(USE_D3D12)
+    target_compile_definitions(EngineLib PRIVATE USE_D3D12=1)
+endif()
 
 # Find all test source files
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "tests/*.cpp")
+
+# If D3D12 is disabled, exclude tests that target D3D12-specific functionality
+if(NOT USE_D3D12)
+    set(_FILTERED_TEST_SOURCES "")
+    foreach(_ts IN LISTS TEST_SOURCES)
+        get_filename_component(_tname ${_ts} NAME)
+        if(NOT "${_tname}" MATCHES "^d3d12_")
+            list(APPEND _FILTERED_TEST_SOURCES ${_ts})
+        else()
+            message(STATUS "Excluding D3D12 test from build: ${_tname}")
+        endif()
+    endforeach()
+    set(TEST_SOURCES ${_FILTERED_TEST_SOURCES})
+endif()
 
 # Create test executable
 add_executable(EngineTests ${TEST_SOURCES})
@@ -287,8 +377,7 @@ add_custom_command(
     COMMENT "Copying config files to output directory if newer"
 )
 
-# Copy compiled shaders to the final executable's output directory
-if(ALL_COMPILED_SHADERS)
+if(USE_D3D12 AND ALL_COMPILED_SHADERS)
     add_custom_command(
         TARGET Engine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:Engine>/shaders

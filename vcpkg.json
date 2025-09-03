@@ -2,14 +2,19 @@
   "name": "engine",
   "version-string": "0.1.0",
   "dependencies": [
-    "directx-headers",
-    "directxtk12",
+  { "name": "directx-headers", "platform": "windows" },
+  { "name": "directxtk12", "platform": "windows" },
     "glfw3",
     "glog",
     "gtest",
     {
       "name": "imgui",
-      "features": [ "dx12-binding", "glfw-binding" ]
+      "features": [ "glfw-binding" ]
+    },
+    {
+      "name": "imgui",
+      "features": [ "dx12-binding" ],
+      "platform": "windows"
     },
     "tinygltf",
     "yaml-cpp",

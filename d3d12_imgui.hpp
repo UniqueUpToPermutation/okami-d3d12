@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_D3D12
+
 #include <optional>
 #include <expected>
 #include <memory>
@@ -35,3 +37,5 @@ namespace okami {
 		~ImGuiImpl();
 	};
 }
+
+#endif

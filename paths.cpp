@@ -8,6 +8,7 @@
 #include <climits>
 #elif __APPLE__
 #include <mach-o/dyld.h>
+#include <vector>
 #endif
 
 using namespace okami;

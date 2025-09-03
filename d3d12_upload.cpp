@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_upload.hpp"
 #include <glog/logging.h>
 #include <condition_variable>
@@ -281,3 +283,5 @@ void GpuUploader::Stop() {
 }
 
 } // namespace okami
+
+#endif

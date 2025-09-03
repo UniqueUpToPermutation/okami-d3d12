@@ -1,4 +1,6 @@
 #pragma once
+ 
+#if defined(USE_D3D12)
 
 #include <gtest/gtest.h>
 
@@ -23,3 +25,5 @@ protected:
     void SetUp() override;
     void TearDown() override;
 };
+
+#endif // USE_D3D12

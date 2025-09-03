@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_static_mesh.hpp"
 #include "d3d12_mesh_formats.hpp"
 
@@ -282,3 +284,5 @@ Error StaticMeshRenderer::Render(
 
     return {};
 }
+
+#endif

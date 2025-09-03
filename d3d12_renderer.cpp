@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include <expected>
 #include <algorithm>
 #include <array>
@@ -1005,3 +1007,5 @@ public:
 std::unique_ptr<IEngineModule> D3D12RendererModuleFactory::operator() () {
 	return std::make_unique<RendererModule>();
 }
+
+#endif

@@ -309,7 +309,7 @@ protected:
 		m_deserializers[name] = func;
     }
 
-    std::optional<std::any> Read(std::string_view name) {
+    std::optional<std::any> Read(std::string_view name) override {
         if (auto it = m_configs.find(name); it != m_configs.end()) {
             return it->second;
 		} else {

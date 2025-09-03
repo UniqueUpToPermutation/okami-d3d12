@@ -3,6 +3,7 @@
 #include <vector>
 #include <optional>
 #include <span>
+#include <filesystem>
 
 #include "common.hpp"
 #include "aabb.hpp"
@@ -187,10 +188,10 @@ namespace okami {
             auto stride = attribute->GetStride();
 
             // Create a view of the buffer data
-            return GeometryView<T>(
+            return GeometryView<T>{
 				reinterpret_cast<T*>(data.data() + bufferOffset),
 				reinterpret_cast<T*>(data.data() + bufferOffset + stride * mesh.m_vertexCount)
-			);
+			};
 		}
 
         static Expected<RawGeometry> LoadGLTF(std::filesystem::path const& path);

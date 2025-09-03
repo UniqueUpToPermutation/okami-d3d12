@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_D3D12
+
 #include "renderer.hpp"
 #include "d3d12_common.hpp"
 #include "d3d12_upload.hpp"
@@ -108,3 +110,5 @@ namespace okami {
         Error TransitionTextures(ID3D12Device& device, ID3D12GraphicsCommandList& commandList);
     };
 }
+
+#endif

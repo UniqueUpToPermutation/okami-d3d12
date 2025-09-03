@@ -1,3 +1,5 @@
+#if USE_D3D12
+
 #include "common.hpp"
 
 #include "d3d12_descriptor_pool.hpp"
@@ -96,3 +98,5 @@ void DescriptorPool::Free(D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle, D3D12_GPU_DESCR
 		throw std::out_of_range("Descriptor handle out of range");
 	}
 }
+
+#endif

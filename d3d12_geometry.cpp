@@ -1,3 +1,5 @@
+#ifdef USE_D3D12
+
 #include "d3d12_geometry.hpp"
 #include "d3d12_mesh_formats.hpp"
 
@@ -252,3 +254,5 @@ ResHandle<Geometry> GeometryManager::Create(typename Geometry::CreationData&& da
             this));
     return handle;
 }
+
+#endif

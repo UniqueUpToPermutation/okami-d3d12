@@ -41,7 +41,15 @@ void CompareImages(Engine& engine) {
 TEST(RendererTest, Triangle) {
 	std::vector <const char*> argsv;
 	Engine engine{ GetTestEngineParams(argsv, "render_triangle") };
+#if defined(USE_D3D12)
+#if defined(USE_D3D12)
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+#else
+	GTEST_SKIP() << "D3D12 not enabled; skipping renderer tests.";
+#endif
+#else
+	GTEST_SKIP() << "D3D12 not enabled; skipping renderer tests.";
+#endif
 
 	if (auto err = engine.Startup(); err.IsError()) {
 		FAIL() << "Engine startup failed: " << err;
@@ -62,7 +70,11 @@ TEST(RendererTest, Triangle) {
 TEST(RendererTest, TwoTriangles) {
 	std::vector <const char*> argsv;
 	Engine engine{ GetTestEngineParams(argsv, "render_two_triangle") };
+#if defined(USE_D3D12)
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+#else
+	GTEST_SKIP() << "D3D12 not enabled; skipping renderer tests.";
+#endif
 
 	if (auto err = engine.Startup(); err.IsError()) {
 		FAIL() << "Engine startup failed: " << err;
@@ -100,7 +112,11 @@ TEST(RendererTest, TwoTriangles) {
 TEST(RendererTest, Cube) {
 	std::vector <const char*> argsv;
 	Engine engine{ GetTestEngineParams(argsv, "render_cube") };
+#if defined(USE_D3D12)
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+#else
+	GTEST_SKIP() << "D3D12 not enabled; skipping renderer tests.";
+#endif
 
     if (auto err = engine.Startup(); err.IsError()) {  
         FAIL() << "Engine startup failed: " << err;
@@ -140,7 +156,11 @@ TEST(RendererTest, Cube) {
 TEST(RendererTest, TwoMeshes) {
 	std::vector <const char*> argsv;
 	Engine engine{ GetTestEngineParams(argsv, "render_two_meshes") };
+#if defined(USE_D3D12)
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+#else
+	GTEST_SKIP() << "D3D12 not enabled; skipping renderer tests.";
+#endif
 
     if (auto err = engine.Startup(); err.IsError()) {  
         FAIL() << "Engine startup failed: " << err;
@@ -185,7 +205,11 @@ TEST(RendererTest, TwoMeshes) {
 TEST(RendererTest, Sprites) {
 	std::vector <const char*> argsv;
 	Engine engine{ GetTestEngineParams(argsv, "render_sprite") };
+#if defined(USE_D3D12)
 	engine.AddModuleFromFactory<D3D12RendererModuleFactory>();
+#else
+	GTEST_SKIP() << "D3D12 not enabled; skipping renderer tests.";
+#endif
 
     if (auto err = engine.Startup(); err.IsError()) {  
         FAIL() << "Engine startup failed: " << err;
