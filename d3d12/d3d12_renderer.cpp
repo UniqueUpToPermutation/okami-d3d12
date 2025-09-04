@@ -21,8 +21,9 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_dx12.h>
 
-#include "engine.hpp"
-#include "config.hpp"
+#include "../engine.hpp"
+#include "../config.hpp"
+
 #include "d3d12_descriptor_pool.hpp"
 #include "d3d12_imgui.hpp"
 #include "d3d12_triangle.hpp"
