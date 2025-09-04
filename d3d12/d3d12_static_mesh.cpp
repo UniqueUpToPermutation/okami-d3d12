@@ -10,7 +10,7 @@
 
 #include <array>
 
-#include "paths.hpp"
+#include "../paths.hpp"
 #include "d3d12_common.hpp"
 
 using namespace okami;

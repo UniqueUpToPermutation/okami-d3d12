@@ -1,9 +1,10 @@
 #ifdef USE_D3D12
 
-#include "common.hpp"
 #include "d3d12_sprite.hpp"
 #include "d3d12_common.hpp"
-#include "paths.hpp"
+
+#include "../paths.hpp"
+#include "../common.hpp"
 
 #include <d3d12.h>
 #include <directx/d3dx12.h>

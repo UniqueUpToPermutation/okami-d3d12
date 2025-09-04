@@ -11,16 +11,16 @@
 #include <expected>
 #include <filesystem>
 
-#include "engine.hpp"
-#include "common.hpp"
+#include "../engine.hpp"
+#include "../common.hpp"
 
-#include "shaders/common.fxh"
+#include "../shaders/common.fxh"
 
 #include <glm/mat4x4.hpp>
 
-#include "camera.hpp"
-#include "transform.hpp"
-#include "geometry.hpp"
+#include "../camera.hpp"
+#include "../transform.hpp"
+#include "../geometry.hpp"
 
 namespace okami {
 	using Microsoft::WRL::ComPtr;

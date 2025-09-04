@@ -1,7 +1,7 @@
 #ifdef USE_D3D12
 
 #include "d3d12_triangle.hpp"
-#include "paths.hpp"
+#include "../paths.hpp"
 #include <d3d12.h>
 #include <d3dcompiler.h>
 #include <directx/d3dx12.h>

@@ -10,7 +10,7 @@
 
 #include <glog/logging.h>
 
-#include "paths.hpp"
+#include "../paths.hpp"
 
 using namespace okami;
 

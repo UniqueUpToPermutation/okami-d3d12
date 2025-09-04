@@ -9,7 +9,8 @@
 #include <GLFW/glfw3.h>
 #include <directxtk12/RenderTargetState.h>
 
-#include "engine.hpp"
+#include "../engine.hpp"
+
 #include "d3d12_descriptor_pool.hpp"
 
 namespace okami {

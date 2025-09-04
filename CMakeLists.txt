@@ -52,8 +52,8 @@ endif()
 # TinyGLTF is header-only and doesn't provide CMake config
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
 
-# Automatically add all .cpp and .hpp files in the project directory
-file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
+# Automatically add all .cpp and .hpp files in the project directory and d3d12/ subdirectory
+file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp" "d3d12/*.cpp" "d3d12/*.hpp")
 
 # If D3D12 support is disabled, filter out any d3d12_* source/header files so
 # they are not compiled on non-Windows platforms.
@@ -61,10 +61,11 @@ if(NOT USE_D3D12)
     set(_FILTERED_ENGINE_SOURCES "")
     foreach(_src IN LISTS ENGINE_SOURCES)
         get_filename_component(_fname ${_src} NAME)
-        if(NOT "${_fname}" MATCHES "^d3d12_")
-            list(APPEND _FILTERED_ENGINE_SOURCES ${_src})
+        # Check if file is in d3d12/ directory or filename starts with d3d12_
+        if("${_src}" MATCHES "/d3d12/" OR "${_fname}" MATCHES "^d3d12_")
+            message(STATUS "Excluding D3D12 source from build: ${_src}")
         else()
-            message(STATUS "Excluding D3D12 source from build: ${_fname}")
+            list(APPEND _FILTERED_ENGINE_SOURCES ${_src})
         endif()
     endforeach()
     set(ENGINE_SOURCES ${_FILTERED_ENGINE_SOURCES})
@@ -254,6 +255,8 @@ endif()
 
 # Add TinyGLTF include directory
 target_include_directories(Engine PRIVATE ${TINYGLTF_INCLUDE_DIRS})
+# Add d3d12/ subdirectory to include path
+target_include_directories(Engine PRIVATE ${CMAKE_SOURCE_DIR}/d3d12)
 if(USE_D3D12)
     target_link_libraries(Engine PRIVATE
         Microsoft::DirectXTK12
@@ -271,7 +274,7 @@ target_compile_definitions(Engine PRIVATE NOMINMAX)
 #==============================================================================
 
 # Create a library with engine sources (excluding main.cpp)
-file(GLOB ENGINE_LIB_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp")
+file(GLOB ENGINE_LIB_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.hpp" "d3d12/*.cpp" "d3d12/*.hpp")
 list(REMOVE_ITEM ENGINE_LIB_SOURCES "${CMAKE_SOURCE_DIR}/main.cpp")
 
 # Filter library sources when D3D12 support is disabled
@@ -279,10 +282,11 @@ if(NOT USE_D3D12)
     set(_FILTERED_LIB_SOURCES "")
     foreach(_src IN LISTS ENGINE_LIB_SOURCES)
         get_filename_component(_fname ${_src} NAME)
-        if(NOT "${_fname}" MATCHES "^d3d12_")
-            list(APPEND _FILTERED_LIB_SOURCES ${_src})
+        # Check if file is in d3d12/ directory or filename starts with d3d12_
+        if("${_src}" MATCHES "/d3d12/" OR "${_fname}" MATCHES "^d3d12_")
+            message(STATUS "Excluding D3D12 lib source from build: ${_src}")
         else()
-            message(STATUS "Excluding D3D12 lib source from build: ${_fname}")
+            list(APPEND _FILTERED_LIB_SOURCES ${_src})
         endif()
     endforeach()
     set(ENGINE_LIB_SOURCES ${_FILTERED_LIB_SOURCES})
@@ -312,6 +316,7 @@ endif()
 
 # Set include directories for the library
 target_include_directories(EngineLib PUBLIC ${CMAKE_SOURCE_DIR})
+target_include_directories(EngineLib PUBLIC ${CMAKE_SOURCE_DIR}/d3d12)
 target_include_directories(EngineLib PRIVATE ${TINYGLTF_INCLUDE_DIRS})
 target_compile_definitions(EngineLib PRIVATE NOMINMAX)
 if(USE_D3D12)

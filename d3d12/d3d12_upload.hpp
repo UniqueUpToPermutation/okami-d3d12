@@ -8,7 +8,7 @@
 #include <mutex>
 #include <chrono>
 
-#include "common.hpp"
+#include "../common.hpp"
 #include "d3d12_common.hpp"
 
 namespace okami {

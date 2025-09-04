@@ -2,11 +2,12 @@
 
 #ifdef USE_D3D12
 
-#include "renderer.hpp"
+#include "../renderer.hpp"
+#include "../storage.hpp"
+#include "../geometry.hpp"
+
 #include "d3d12_common.hpp"
 #include "d3d12_upload.hpp"
-#include "storage.hpp"
-#include "geometry.hpp"
 
 namespace okami {
     class GeometryManager;

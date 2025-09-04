@@ -4,10 +4,11 @@
 
 #include <DirectXTK12/RenderTargetState.h>
 
-#include "renderer.hpp"
+#include "../renderer.hpp"
+#include "../storage.hpp"
+
 #include "d3d12_common.hpp"
 #include "d3d12_upload.hpp"
-#include "storage.hpp"
 #include "d3d12_geometry.hpp"
 
 namespace okami {

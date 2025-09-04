@@ -2,9 +2,9 @@
 
 #ifdef USE_D3D12
 
-#include "shaders/common.fxh"
+#include "../shaders/common.fxh"
 
-#include "engine.hpp"
+#include "../engine.hpp"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
@@ -13,9 +13,9 @@
 #include <expected>
 
 #include "d3d12_common.hpp"
-#include "storage.hpp"
-#include "renderer.hpp"
-#include "transform.hpp"
+#include "../storage.hpp"
+#include "../renderer.hpp"
+#include "../transform.hpp"
 
 namespace okami {
 	using Microsoft::WRL::ComPtr;

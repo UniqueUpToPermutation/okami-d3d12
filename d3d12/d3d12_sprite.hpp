@@ -4,12 +4,13 @@
 
 #include <DirectXTK12/RenderTargetState.h>
 
-#include "shaders/sprite.fxh"
-#include "shaders/common.fxh"
+#include "../shaders/sprite.fxh"
+#include "../shaders/common.fxh"
+#include "../renderer.hpp"
+#include "../storage.hpp"
+
 #include "d3d12_common.hpp"
 #include "d3d12_texture.hpp"
-#include "renderer.hpp"
-#include "storage.hpp"
 
 namespace okami {
     class SpriteRenderer {
